@@ -1,3 +1,4 @@
+use core::fmt;
 use std::{cell::RefCell, error::Error, mem, rc::Rc};
 
 fn rcref<T>(val: T) -> Rc<RefCell<T>> {
@@ -5,8 +6,22 @@ fn rcref<T>(val: T) -> Rc<RefCell<T>> {
 }
 
 #[derive(Debug)]
-pub struct UnexpectedCharErr {
-    ch: char,
+pub enum ParseError {
+    UnexpectedCharErr(char),
+    UnterminatedCharSet,
+    EmptyCaptureGroup,
+}
+
+impl fmt::Display for ParseError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ParseError::UnexpectedCharErr(ch) => {
+                f.write_fmt(format_args!("unexpected char {}", ch))
+            }
+            ParseError::UnterminatedCharSet => f.write_str("unterminated character set"),
+            ParseError::EmptyCaptureGroup => f.write_str("empty capture group"),
+        }
+    }
 }
 
 pub struct Parser {}
@@ -20,7 +35,7 @@ impl Parser {
         self: &Self,
         iter: &mut std::iter::Peekable<I>,
         until: Option<char>,
-    ) -> Result<Option<Rc<RefCell<Node>>>, String>
+    ) -> Result<Option<Rc<RefCell<Node>>>, ParseError>
     where
         I: Iterator<Item = char>,
     {
@@ -36,9 +51,10 @@ impl Parser {
 
             let new_node = match ch {
                 '(' => {
-                    let group = self
-                        .parse_iter_until(iter, Some(')'))?
-                        .expect("expected group contents");
+                    let group = match self.parse_iter_until(iter, Some(')'))? {
+                        Some(group) => group,
+                        None => return Err(ParseError::EmptyCaptureGroup),
+                    };
 
                     rcref(Node {
                         val: NodeVal::Group(group),
@@ -48,10 +64,10 @@ impl Parser {
                 '|' => todo!(),
                 '{' => todo!(),
                 '[' => {
-                    let mut is_inverted = false;
+                    let mut inverted = false;
                     if let Some(next) = iter.peek() {
                         if *next == '^' {
-                            is_inverted = true;
+                            inverted = true;
                             _ = iter.next();
                         }
                     }
@@ -68,11 +84,11 @@ impl Parser {
                     }
 
                     if !found_end {
-                        return Err(String::from("failed to find end to character set"));
+                        return Err(ParseError::UnterminatedCharSet);
                     }
 
                     rcref(Node {
-                        val: NodeVal::Set(set),
+                        val: NodeVal::Set { set, inverted },
                         next: None,
                     })
                 }
@@ -80,7 +96,7 @@ impl Parser {
                     let ch = match iter.next().expect("expected character to quote") {
                         '(' | ')' | '{' | '}' | '[' | ']' | '|' | '\\' | '^' | '$' | '.' | '*'
                         | '?' => ch,
-                        _ => return Err(format!("unexpected char {}", ch)),
+                        _ => return Err(ParseError::UnexpectedCharErr(ch)),
                     };
 
                     rcref(Node {
@@ -134,7 +150,7 @@ impl Parser {
         Ok(head)
     }
 
-    pub fn parse(self: &Self, input: &str) -> Result<ParseResult, Box<dyn Error>> {
+    pub fn parse(self: &Self, input: &str) -> Result<ParseResult, ParseError> {
         let mut iter = input.chars().peekable();
 
         Ok(ParseResult {
@@ -164,7 +180,7 @@ pub enum NodeVal {
     End,
     Optional,
     Group(Rc<RefCell<Node>>),
-    Set(Vec<char>),
+    Set { set: Vec<char>, inverted: bool },
 }
 
 #[cfg(test)]
@@ -215,7 +231,7 @@ mod test {
     fn test_parse_group() {
         let parser = Parser::new();
 
-        let parsed = parser.parse("hello (123) world").expect("failed to parse");
+        let parsed = parser.parse("he(llo (1(23) wor)ld)").expect("failed to parse");
         println!("{:?}", parsed);
         todo!();
     }
@@ -224,7 +240,9 @@ mod test {
     fn test_parse_set() {
         let parser = Parser::new();
 
-        let parsed = parser.parse("hello (123) w[orld]").expect("failed to parse");
+        let parsed = parser
+            .parse("hel[^lo] (123) w[orld]")
+            .expect("failed to parse");
         println!("{:?}", parsed);
         todo!();
     }
