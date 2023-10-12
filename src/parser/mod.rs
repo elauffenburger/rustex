@@ -1,5 +1,5 @@
 use core::fmt;
-use std::{cell::RefCell, error::Error, mem, rc::Rc};
+use std::{cell::RefCell, error::Error, iter::Peekable, mem, rc::Rc};
 
 fn rcref<T>(val: T) -> Rc<RefCell<T>> {
     Rc::new(RefCell::new(val))
@@ -10,6 +10,7 @@ pub enum ParseError {
     UnexpectedCharErr(char),
     UnterminatedCharSet,
     EmptyCaptureGroup,
+    MissingCharacterToEscape,
 }
 
 impl fmt::Display for ParseError {
@@ -20,38 +21,54 @@ impl fmt::Display for ParseError {
             }
             ParseError::UnterminatedCharSet => f.write_str("unterminated character set"),
             ParseError::EmptyCaptureGroup => f.write_str("empty capture group"),
+            ParseError::MissingCharacterToEscape => f.write_str("missing character to escape"),
         }
     }
 }
 
 pub struct Parser {}
 
-impl Parser {
-    pub fn new() -> Self {
-        Parser {}
-    }
+enum GroupType {
+    Group,
+    Set,
+}
 
-    fn parse_iter_until<I>(
-        self: &Self,
-        iter: &mut std::iter::Peekable<I>,
-        until: Option<char>,
-    ) -> Result<Option<Rc<RefCell<Node>>>, ParseError>
-    where
-        I: Iterator<Item = char>,
-    {
+struct ParserImpl<Iter>
+where
+    Iter: Iterator<Item = char>,
+{
+    iter: Peekable<Iter>,
+}
+
+impl<Iter> ParserImpl<Iter>
+where
+    Iter: Iterator<Item = char>,
+{
+    fn parse(
+        self: &mut Self,
+        group_type: Option<GroupType>,
+    ) -> Result<Option<Rc<RefCell<Node>>>, ParseError> {
         let mut head = None;
         let mut node: Option<Rc<RefCell<Node>>> = None;
 
-        while let Some(ch) = iter.next() {
-            if let Some(until) = until {
-                if until == ch {
-                    break;
+        while let Some(ch) = self.next() {
+            match group_type {
+                None => {}
+                Some(GroupType::Group) => {
+                    if ch == ')' {
+                        break;
+                    }
+                }
+                Some(GroupType::Set) => {
+                    if ch == ']' {
+                        break;
+                    }
                 }
             }
 
             let new_node = match ch {
                 '(' => {
-                    let group = match self.parse_iter_until(iter, Some(')'))? {
+                    let group = match self.parse(Some(GroupType::Group))? {
                         Some(group) => group,
                         None => return Err(ParseError::EmptyCaptureGroup),
                     };
@@ -65,17 +82,17 @@ impl Parser {
                 '{' => todo!(),
                 '[' => {
                     let mut inverted = false;
-                    if let Some(next) = iter.peek() {
+                    if let Some(next) = self.peek() {
                         if *next == '^' {
                             inverted = true;
-                            _ = iter.next();
+                            _ = self.next();
                         }
                     }
 
                     let mut found_end = false;
                     let mut set = vec![];
-                    while let Some(ch) = iter.next() {
-                        if ch == ']' {
+                    while let (Some(ch), escaped) = self.next_escaped()? {
+                        if !escaped && ch == ']' {
                             found_end = true;
                             break;
                         }
@@ -92,18 +109,10 @@ impl Parser {
                         next: None,
                     })
                 }
-                '\\' => {
-                    let ch = match iter.next().expect("expected character to quote") {
-                        '(' | ')' | '{' | '}' | '[' | ']' | '|' | '\\' | '^' | '$' | '.' | '*'
-                        | '?' => ch,
-                        _ => return Err(ParseError::UnexpectedCharErr(ch)),
-                    };
-
-                    rcref(Node {
-                        val: NodeVal::Char(ch),
-                        next: None,
-                    })
-                }
+                '\\' => rcref(Node {
+                    val: NodeVal::Char(self.escape_next()?),
+                    next: None,
+                }),
                 '.' => rcref(Node {
                     val: NodeVal::Any,
                     next: None,
@@ -150,11 +159,49 @@ impl Parser {
         Ok(head)
     }
 
-    pub fn parse(self: &Self, input: &str) -> Result<ParseResult, ParseError> {
-        let mut iter = input.chars().peekable();
+    fn peek(&mut self) -> Option<&char> {
+        self.iter.peek()
+    }
+
+    fn next(&mut self) -> Option<char> {
+        self.iter.next()
+    }
+
+    fn next_escaped(&mut self) -> Result<(Option<char>, bool), ParseError> {
+        match self.next() {
+            None => Ok((None, false)),
+            Some(ch) => match ch {
+                '\\' => Ok((Some(self.escape_next()?), true)),
+                _ => Ok((Some(ch), false)),
+            },
+        }
+    }
+
+    fn escape_next(&mut self) -> Result<char, ParseError> {
+        match self.next() {
+            None => return Err(ParseError::MissingCharacterToEscape),
+            Some(ch) => match ch {
+                '(' | ')' | '{' | '}' | '[' | ']' | '|' | '\\' | '^' | '$' | '.' | '*' | '?' => {
+                    Ok(ch)
+                }
+                _ => return Err(ParseError::UnexpectedCharErr(ch)),
+            },
+        }
+    }
+}
+
+impl Parser {
+    pub fn new() -> Self {
+        Parser {}
+    }
+
+    pub fn parse_str(self: &Self, input: &str) -> Result<ParseResult, ParseError> {
+        let mut parser = ParserImpl {
+            iter: input.chars().peekable(),
+        };
 
         Ok(ParseResult {
-            head: self.parse_iter_until(&mut iter, None)?,
+            head: parser.parse(None)?,
         })
     }
 }
@@ -215,7 +262,9 @@ mod test {
     fn test_parse_alphanum() {
         let parser = Parser::new();
 
-        let parsed = parser.parse("hello world 123").expect("failed to parse");
+        let parsed = parser
+            .parse_str("hello world 123")
+            .expect("failed to parse");
         assert_eq!(
             format!("{:?}", parsed),
             format!(
@@ -231,7 +280,9 @@ mod test {
     fn test_parse_group() {
         let parser = Parser::new();
 
-        let parsed = parser.parse("he(llo (1(23) wor)ld)").expect("failed to parse");
+        let parsed = parser
+            .parse_str("he(llo (1(23) wor)ld)")
+            .expect("failed to parse");
         println!("{:?}", parsed);
         todo!();
     }
@@ -241,9 +292,28 @@ mod test {
         let parser = Parser::new();
 
         let parsed = parser
-            .parse("hel[^lo] (123) w[orld]")
+            .parse_str("hel[^lo] (123) w[orld]")
             .expect("failed to parse");
         println!("{:?}", parsed);
         todo!();
+    }
+
+    #[test]
+    fn test_parse_escaped() {
+        let parser = Parser::new();
+
+        let parsed = parser
+            .parse_str("foo\\[ bar\\\\ baz\\^")
+            .expect("failed to parse");
+
+        assert_eq!(
+            format!("{:?}", parsed),
+            format!(
+                "{:?}",
+                ParseResult {
+                    head: node_from_literal_str("foo[ bar\\ baz^")
+                }
+            ),
+        )
     }
 }
