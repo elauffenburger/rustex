@@ -11,6 +11,7 @@ pub enum ParseError {
     UnterminatedCharSet,
     EmptyCaptureGroup,
     MissingCharacterToEscape,
+    MissingRightSideOfOr,
 }
 
 impl fmt::Display for ParseError {
@@ -22,6 +23,7 @@ impl fmt::Display for ParseError {
             ParseError::UnterminatedCharSet => f.write_str("unterminated character set"),
             ParseError::EmptyCaptureGroup => f.write_str("empty capture group"),
             ParseError::MissingCharacterToEscape => f.write_str("missing character to escape"),
+            ParseError::MissingRightSideOfOr => f.write_str("missing right side of or"),
         }
     }
 }
@@ -49,7 +51,7 @@ where
         group_type: Option<GroupType>,
     ) -> Result<Option<Rc<RefCell<Node>>>, ParseError> {
         let mut head = None;
-        let mut node: Option<Rc<RefCell<Node>>> = None;
+        let mut prev: Option<Rc<RefCell<Node>>> = None;
 
         while let Some(ch) = self.next() {
             match group_type {
@@ -67,6 +69,7 @@ where
             }
 
             let new_node = match ch {
+                '{' => todo!(),
                 '(' => {
                     let group = match self.parse(Some(GroupType::Group))? {
                         Some(group) => group,
@@ -78,8 +81,25 @@ where
                         next: None,
                     })
                 }
-                '|' => todo!(),
-                '{' => todo!(),
+                '|' => {
+                    // Grab the last node val that we created by swapping it out with a placeholder val.
+                    let mut left = NodeVal::Any;
+                    mem::swap(&mut (prev.as_ref().unwrap()).borrow_mut().val, &mut left);
+
+                    rcref(Node {
+                        val: NodeVal::Or {
+                            left: rcref(Node {
+                                val: left,
+                                next: None,
+                            }),
+                            right: match self.parse(None)? {
+                                None => return Err(ParseError::MissingRightSideOfOr),
+                                Some(val) => val,
+                            },
+                        },
+                        next: None,
+                    })
+                }
                 '[' => {
                     let mut inverted = false;
                     if let Some(next) = self.peek() {
@@ -143,16 +163,16 @@ where
                 }),
             };
 
-            if node.is_none() {
+            if prev.is_none() {
                 head = Some(new_node.clone());
-                node = Some(new_node.clone());
+                prev = Some(new_node.clone());
             } else {
                 // Update node.next to point to the new node.
-                let node_val = mem::take(&mut node).unwrap();
+                let node_val = mem::take(&mut prev).unwrap();
                 (*node_val).borrow_mut().next = Some(new_node.clone());
 
                 // Update node to point to the new node.
-                node = Some(new_node.clone());
+                prev = Some(new_node.clone());
             }
         }
 
@@ -181,9 +201,8 @@ where
         match self.next() {
             None => return Err(ParseError::MissingCharacterToEscape),
             Some(ch) => match ch {
-                '(' | ')' | '{' | '}' | '[' | ']' | '|' | '\\' | '^' | '$' | '.' | '*' | '?' => {
-                    Ok(ch)
-                }
+                '(' | ')' | '{' | '}' | '[' | ']' | '|' | '\\' | '^' | '$' | '.' | '*' | '?'
+                | '+' => Ok(ch),
                 _ => return Err(ParseError::UnexpectedCharErr(ch)),
             },
         }
@@ -227,7 +246,14 @@ pub enum NodeVal {
     End,
     Optional,
     Group(Rc<RefCell<Node>>),
-    Set { set: Vec<char>, inverted: bool },
+    Set {
+        set: Vec<char>,
+        inverted: bool,
+    },
+    Or {
+        left: Rc<RefCell<Node>>,
+        right: Rc<RefCell<Node>>,
+    },
 }
 
 #[cfg(test)]
