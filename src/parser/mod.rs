@@ -68,7 +68,7 @@ where
                 }
             }
 
-            let new_node = match ch {
+            let new_node_val = match ch {
                 '{' => todo!(),
                 '(' => {
                     let group = match self.parse(Some(GroupType::Group))? {
@@ -76,29 +76,29 @@ where
                         None => return Err(ParseError::EmptyCaptureGroup),
                     };
 
-                    rcref(Node {
-                        val: NodeVal::Group(group),
-                        next: None,
-                    })
+                    NodeVal::Group(group)
                 }
                 '|' => {
                     // Grab the last node val that we created by swapping it out with a placeholder val.
-                    let mut left = NodeVal::Any;
-                    mem::swap(&mut (prev.as_ref().unwrap()).borrow_mut().val, &mut left);
+                    let mut left_val = NodeVal::Any;
+                    mem::swap(
+                        &mut (prev.as_ref().unwrap()).borrow_mut().val,
+                        &mut left_val,
+                    );
 
-                    rcref(Node {
-                        val: NodeVal::Or {
-                            left: rcref(Node {
-                                val: left,
-                                next: None,
-                            }),
-                            right: match self.parse(None)? {
-                                None => return Err(ParseError::MissingRightSideOfOr),
-                                Some(val) => val,
-                            },
-                        },
+                    // Build the left node from the node val we grabbed.
+                    let left = rcref(Node {
+                        val: left_val,
                         next: None,
-                    })
+                    });
+
+                    // Parse the right side and use it as the right node.
+                    let right = match self.parse(None)? {
+                        None => return Err(ParseError::MissingRightSideOfOr),
+                        Some(val) => val,
+                    };
+
+                    NodeVal::Or { left, right }
                 }
                 '[' => {
                     let mut inverted = false;
@@ -124,55 +124,33 @@ where
                         return Err(ParseError::UnterminatedCharSet);
                     }
 
-                    rcref(Node {
-                        val: NodeVal::Set { set, inverted },
-                        next: None,
-                    })
+                    NodeVal::Set { set, inverted }
                 }
-                '\\' => rcref(Node {
-                    val: NodeVal::Char(self.escape_next()?),
-                    next: None,
-                }),
-                '.' => rcref(Node {
-                    val: NodeVal::Any,
-                    next: None,
-                }),
-                '*' => rcref(Node {
-                    val: NodeVal::ZeroOrMore,
-                    next: None,
-                }),
-                '+' => rcref(Node {
-                    val: NodeVal::OneOrMore,
-                    next: None,
-                }),
-                '?' => rcref(Node {
-                    val: NodeVal::Optional,
-                    next: None,
-                }),
-                '^' => rcref(Node {
-                    val: NodeVal::Start,
-                    next: None,
-                }),
-                '$' => rcref(Node {
-                    val: NodeVal::End,
-                    next: None,
-                }),
-                _ => rcref(Node {
-                    val: NodeVal::Char(ch),
-                    next: None,
-                }),
+                '\\' => NodeVal::Char(self.escape_next()?),
+                '.' => NodeVal::Any,
+                '*' => NodeVal::ZeroOrMore,
+                '+' => NodeVal::OneOrMore,
+                '?' => NodeVal::Optional,
+                '^' => NodeVal::Start,
+                '$' => NodeVal::End,
+                _ => NodeVal::Char(ch),
             };
+
+            let new_node = rcref(Node {
+                val: new_node_val,
+                next: None,
+            });
 
             if prev.is_none() {
                 head = Some(new_node.clone());
-                prev = Some(new_node.clone());
+                prev = Some(new_node);
             } else {
                 // Update node.next to point to the new node.
                 let node_val = mem::take(&mut prev).unwrap();
                 (*node_val).borrow_mut().next = Some(new_node.clone());
 
                 // Update node to point to the new node.
-                prev = Some(new_node.clone());
+                prev = Some(new_node);
             }
         }
 
@@ -272,7 +250,7 @@ mod test {
 
             if node.is_none() {
                 node = Some(new_node.clone());
-                res = Some(new_node.clone());
+                res = Some(new_node);
             } else {
                 let node_val = mem::take(&mut node);
                 (*node_val.unwrap()).borrow_mut().next = Some(new_node.clone());
