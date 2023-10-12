@@ -12,6 +12,7 @@ pub enum ParseError {
     EmptyCaptureGroup,
     MissingCharacterToEscape,
     MissingRightSideOfOr,
+    BadGroupConfig,
 }
 
 impl fmt::Display for ParseError {
@@ -24,15 +25,17 @@ impl fmt::Display for ParseError {
             ParseError::EmptyCaptureGroup => f.write_str("empty capture group"),
             ParseError::MissingCharacterToEscape => f.write_str("missing character to escape"),
             ParseError::MissingRightSideOfOr => f.write_str("missing right side of or"),
+            ParseError::BadGroupConfig => f.write_str("bad group config"),
         }
     }
 }
 
 pub struct Parser {}
 
-enum GroupType {
-    Group,
-    Set,
+#[derive(Debug)]
+enum GroupConfig {
+    NonCapturing,
+    Named(String),
 }
 
 struct ParserImpl<Iter>
@@ -48,35 +51,56 @@ where
 {
     fn parse(
         self: &mut Self,
-        group_type: Option<GroupType>,
+        until: Option<char>,
     ) -> Result<Option<Rc<RefCell<Node>>>, ParseError> {
         let mut head = None;
         let mut prev: Option<Rc<RefCell<Node>>> = None;
 
         while let Some(ch) = self.next() {
-            match group_type {
+            match until {
+                Some(until) => {
+                    if ch == until {
+                        break;
+                    }
+                }
                 None => {}
-                Some(GroupType::Group) => {
-                    if ch == ')' {
-                        break;
-                    }
-                }
-                Some(GroupType::Set) => {
-                    if ch == ']' {
-                        break;
-                    }
-                }
             }
 
             let new_node_val = match ch {
                 '{' => todo!(),
                 '(' => {
-                    let group = match self.parse(Some(GroupType::Group))? {
+                    let group_config = match self.peek() {
+                        Some('?') => {
+                            let _ = self.next();
+                            match self.next() {
+                                Some(':') => Some(GroupConfig::NonCapturing),
+                                Some('<') => {
+                                    let mut name = String::new();
+                                    while let (Some(ch), escaped) = self.next_escaped()? {
+                                        if !escaped && ch == '>' {
+                                            break;
+                                        }
+
+                                        name.push(ch);
+                                    }
+
+                                    Some(GroupConfig::Named(name))
+                                }
+                                _ => return Err(ParseError::BadGroupConfig),
+                            }
+                        }
+                        _ => None,
+                    };
+
+                    let group = match self.parse(Some(')'))? {
                         Some(group) => group,
                         None => return Err(ParseError::EmptyCaptureGroup),
                     };
 
-                    NodeVal::Group(group)
+                    NodeVal::Group {
+                        group,
+                        cfg: group_config,
+                    }
                 }
                 '|' => {
                     // Grab the last node val that we created by swapping it out with a placeholder val.
@@ -203,15 +227,98 @@ impl Parser {
     }
 }
 
-#[derive(Default, Debug)]
+#[derive(Default)]
 pub struct ParseResult {
     pub head: Option<Rc<RefCell<Node>>>,
 }
 
-#[derive(Debug)]
+impl fmt::Debug for ParseResult {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("ParseResult { ")?;
+        match &self.head {
+            None => {}
+            Some(head) => {
+                head.as_ref().borrow().fmt(f)?;
+            }
+        }
+        f.write_str(" }")
+    }
+}
+
 pub struct Node {
     pub val: NodeVal,
     pub next: Option<Rc<RefCell<Node>>>,
+}
+
+impl Node {
+    fn fmt_internal(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match &self.val {
+            NodeVal::Char(ch) => f.write_fmt(format_args!("'{}'", ch)),
+            NodeVal::Any => f.write_str("."),
+            NodeVal::ZeroOrMore => f.write_str("*"),
+            NodeVal::OneOrMore => f.write_str("+"),
+            NodeVal::Start => f.write_str("^"),
+            NodeVal::End => f.write_str("$"),
+            NodeVal::Optional => f.write_str("?"),
+            NodeVal::Group { group, cfg } => {
+                f.write_str("(")?;
+
+                match cfg {
+                    None => {}
+                    Some(GroupConfig::Named(name)) => {
+                        f.write_fmt(format_args!("<{}>", name))?;
+                    }
+                    Some(GroupConfig::NonCapturing) => {
+                        f.write_str("?:")?;
+                    }
+                }
+
+                group.as_ref().borrow().fmt_internal(f)?;
+
+                f.write_str(")")
+            }
+            NodeVal::Set { set, inverted } => {
+                f.write_str("[")?;
+                if *inverted {
+                    f.write_str("^")?;
+                }
+
+                {
+                    let mut iter = set.iter().peekable();
+                    while let Some(ch) = iter.next() {
+                        f.write_fmt(format_args!("'{}'", ch))?;
+
+                        if let Some(_) = iter.peek() {
+                            f.write_str(", ")?;
+                        }
+                    }
+                }
+
+                f.write_str("]")
+            }
+            NodeVal::Or { left, right } => {
+                f.write_str("or(l(")?;
+                left.as_ref().borrow().fmt_internal(f)?;
+                f.write_str("), r(")?;
+                right.as_ref().borrow().fmt_internal(f)?;
+                f.write_str(")")
+            }
+        }?;
+
+        match &self.next {
+            None => Ok(()),
+            Some(node) => {
+                f.write_str("->")?;
+                node.as_ref().borrow().fmt_internal(f)
+            }
+        }
+    }
+}
+
+impl fmt::Debug for Node {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.fmt_internal(f)
+    }
 }
 
 #[derive(Debug)]
@@ -223,7 +330,10 @@ pub enum NodeVal {
     Start,
     End,
     Optional,
-    Group(Rc<RefCell<Node>>),
+    Group {
+        group: Rc<RefCell<Node>>,
+        cfg: Option<GroupConfig>,
+    },
     Set {
         set: Vec<char>,
         inverted: bool,
@@ -281,18 +391,18 @@ mod test {
     }
 
     #[test]
-    fn test_parse_group() {
+    fn test_parse_groups() {
         let parser = Parser::new();
 
         let parsed = parser
-            .parse_str("he(llo (1(23) wor)ld)")
+            .parse_str("he(llo (1(23) wor)ld i am (?<my_group>named) (?:unnamed) groups)")
             .expect("failed to parse");
         println!("{:?}", parsed);
         todo!();
     }
 
     #[test]
-    fn test_parse_set() {
+    fn test_parse_sets() {
         let parser = Parser::new();
 
         let parsed = parser
