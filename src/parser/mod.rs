@@ -1,5 +1,5 @@
 use core::fmt;
-use std::{cell::RefCell, error::Error, iter::Peekable, mem, rc::Rc};
+use std::{cell::RefCell, iter::Peekable, mem, rc::Rc};
 
 fn rcref<T>(val: T) -> Rc<RefCell<T>> {
     Rc::new(RefCell::new(val))
@@ -32,8 +32,8 @@ impl fmt::Display for ParseError {
 
 pub struct Parser {}
 
-#[derive(Debug)]
-enum GroupConfig {
+#[derive(Debug, Clone)]
+pub enum GroupConfig {
     NonCapturing,
     Named(String),
 }
@@ -103,26 +103,30 @@ where
                     }
                 }
                 '|' => {
-                    // Grab the last node val that we created by swapping it out with a placeholder val.
-                    let mut left_val = NodeVal::Any;
-                    mem::swap(
-                        &mut (prev.as_ref().unwrap()).borrow_mut().val,
-                        &mut left_val,
-                    );
+                    // Grab the head of the current parse group and consider everything under it the left side.
+                    let left = mem::take(&mut head);
 
-                    // Build the left node from the node val we grabbed.
-                    let left = rcref(Node {
-                        val: left_val,
-                        next: None,
-                    });
-
-                    // Parse the right side and use it as the right node.
+                    // Parse everything after the "or" as a separate group and consider it the right side.
                     let right = match self.parse(None)? {
                         None => return Err(ParseError::MissingRightSideOfOr),
-                        Some(val) => val,
+                        Some(right) => right,
                     };
 
-                    NodeVal::Or { left, right }
+                    // Construct the result.
+                    let res_val = NodeVal::Or {
+                        left: left.unwrap(),
+                        right,
+                    };
+
+                    // Swap the or'd result back in as the head and prev node.
+                    let new_head = rcref(Node {
+                        val: res_val.clone(),
+                        next: None,
+                    });
+                    mem::swap(&mut head, &mut Some(new_head.clone()));
+                    mem::swap(&mut prev, &mut Some(new_head));
+
+                    res_val
                 }
                 '[' => {
                     let mut inverted = false;
@@ -321,7 +325,7 @@ impl fmt::Debug for Node {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum NodeVal {
     Char(char),
     Any,
@@ -429,5 +433,16 @@ mod test {
                 }
             ),
         )
+    }
+
+    #[test]
+    fn test_parse_or() {
+        let parser = Parser::new();
+
+        let parsed = parser
+            .parse_str("(foo|(bar))ab|c")
+            .expect("failed to parse");
+        println!("{:?}", parsed);
+        todo!();
     }
 }
