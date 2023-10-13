@@ -49,6 +49,45 @@ impl<Iter> ParserImpl<Iter>
 where
     Iter: Iterator<Item = char>,
 {
+    fn parse_group(&mut self) -> Result<NodeVal, ParseError> {
+        self.next();
+
+        let group_config = match self.peek() {
+            Some('?') => {
+                let _ = self.next();
+                match self.next() {
+                    Some(':') => Some(GroupConfig::NonCapturing),
+                    Some('<') => {
+                        let mut name = String::new();
+                        while let (Some(ch), escaped) = self.next_escaped()? {
+                            if !escaped && ch == '>' {
+                                break;
+                            }
+
+                            name.push(ch);
+                        }
+
+                        Some(GroupConfig::Named(name))
+                    }
+                    _ => return Err(ParseError::BadGroupConfig),
+                }
+            }
+            _ => None,
+        };
+
+        let group = match self.parse(Some(')'))? {
+            Some(group) => group,
+            None => return Err(ParseError::EmptyCaptureGroup),
+        };
+
+        self.next();
+
+        Ok(NodeVal::Group {
+            group,
+            cfg: group_config,
+        })
+    }
+
     fn parse(
         self: &mut Self,
         until: Option<char>,
@@ -56,10 +95,10 @@ where
         let mut head = None;
         let mut prev: Option<Rc<RefCell<Node>>> = None;
 
-        while let Some(ch) = self.next() {
+        while let Some(ch) = self.peek() {
             match until {
                 Some(until) => {
-                    if ch == until {
+                    if *ch == until {
                         break;
                     }
                 }
@@ -68,40 +107,7 @@ where
 
             let new_node_val = match ch {
                 '{' => todo!(),
-                '(' => {
-                    let group_config = match self.peek() {
-                        Some('?') => {
-                            let _ = self.next();
-                            match self.next() {
-                                Some(':') => Some(GroupConfig::NonCapturing),
-                                Some('<') => {
-                                    let mut name = String::new();
-                                    while let (Some(ch), escaped) = self.next_escaped()? {
-                                        if !escaped && ch == '>' {
-                                            break;
-                                        }
-
-                                        name.push(ch);
-                                    }
-
-                                    Some(GroupConfig::Named(name))
-                                }
-                                _ => return Err(ParseError::BadGroupConfig),
-                            }
-                        }
-                        _ => None,
-                    };
-
-                    let group = match self.parse(Some(')'))? {
-                        Some(group) => group,
-                        None => return Err(ParseError::EmptyCaptureGroup),
-                    };
-
-                    NodeVal::Group {
-                        group,
-                        cfg: group_config,
-                    }
-                }
+                '(' => parse_group()?,
                 '|' => {
                     // Grab the head of the current parse group and consider everything under it the left side.
                     let left = mem::take(&mut head);
