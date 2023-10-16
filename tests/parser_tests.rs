@@ -78,3 +78,14 @@ fn test_parse_repitition_range() {
 
     insta::assert_debug_snapshot!(parsed);
 }
+
+#[test]
+fn test_parse_modifiers() {
+    let parser = Parser::new();
+
+    let parsed = parser
+        .parse_str("foo*bar+(baz)?")
+        .expect("failed to parse");
+
+    insta::assert_debug_snapshot!(parsed);
+}

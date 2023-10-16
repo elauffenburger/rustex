@@ -158,24 +158,27 @@ where
         Self::SPECIAL_CHARS.contains(ch)
     }
 
-    fn decorate_node<F: FnOnce(NodeVal) -> NodeVal>(
+    fn decorate_node<F: FnOnce(Rc<RefCell<Node>>) -> NodeVal>(
         node: &mut Option<Rc<RefCell<Node>>>,
         decorator: F,
     ) {
         // Grab the node.
-        let old_prev = mem::take(node).unwrap();
+        let old_node = mem::take(node).unwrap();
 
-        // Grab the val of the prev node.
-        let mut old_prev_val = NodeVal::Any;
-        mem::swap(&mut old_prev_val, &mut old_prev.as_ref().borrow_mut().val);
+        // Grab the val of the old node.
+        let mut old_node_val = NodeVal::Any;
+        mem::swap(&mut old_node_val, &mut old_node.as_ref().borrow_mut().val);
 
-        let res_val = decorator(old_prev_val);
+        let res_val = decorator(rcref(Node {
+            val: old_node_val,
+            next: None,
+        }));
 
-        // Swap the result value into the prev node.
-        old_prev.as_ref().borrow_mut().val = res_val;
+        // Swap the result value into the moved node.
+        old_node.as_ref().borrow_mut().val = res_val;
 
-        // Swap the prev node back in.
-        mem::swap(node, &mut Some(old_prev));
+        // Swap the modified node back into the node addr.
+        mem::swap(node, &mut Some(old_node));
     }
 
     fn parse(
@@ -200,13 +203,10 @@ where
                     // Parse the repitition range vals.
                     let (min, max) = self.parse_repitition_range_vals()?;
 
-                    Self::decorate_node(&mut prev, |old_prev_val| NodeVal::RepititionRange {
+                    Self::decorate_node(&mut prev, |old_prev| NodeVal::RepititionRange {
                         min,
                         max,
-                        node: rcref(Node {
-                            val: old_prev_val,
-                            next: None,
-                        }),
+                        node: old_prev,
                     });
 
                     continue;
@@ -266,12 +266,45 @@ where
 
                     NodeVal::Set { set, inverted }
                 }
-                '.' => NodeVal::Any,
-                '*' => NodeVal::ZeroOrMore,
-                '+' => NodeVal::OneOrMore,
-                '?' => NodeVal::Optional,
-                '^' => NodeVal::Start,
-                '$' => NodeVal::End,
+                '.' => {
+                    self.next();
+
+                    NodeVal::Any
+                }
+                '*' => {
+                    self.next();
+
+                    // TODO: only repeat last char in word.
+
+                    Self::decorate_node(&mut prev, |old_prev| NodeVal::ZeroOrMore(old_prev));
+                    continue;
+                }
+                '+' => {
+                    self.next();
+
+                    // TODO: only repeat last char in word.
+
+                    Self::decorate_node(&mut prev, |old_prev| NodeVal::OneOrMore(old_prev));
+                    continue;
+                }
+                '?' => {
+                    self.next();
+
+                    // TODO: only repeat last char in word.
+
+                    Self::decorate_node(&mut prev, |old_prev| NodeVal::Optional(old_prev));
+                    continue;
+                }
+                '^' => {
+                    self.next();
+
+                    NodeVal::Start
+                }
+                '$' => {
+                    self.next();
+
+                    NodeVal::End
+                }
                 '(' => self.parse_group()?,
                 _ => self.parse_word()?,
             };

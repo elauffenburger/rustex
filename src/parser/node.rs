@@ -16,11 +16,20 @@ impl Node {
         match &self.val {
             NodeVal::Word(word) => f.write_fmt(format_args!("'{}'", word)),
             NodeVal::Any => f.write_str("."),
-            NodeVal::ZeroOrMore => f.write_str("*"),
-            NodeVal::OneOrMore => f.write_str("+"),
+            NodeVal::ZeroOrMore(node) => {
+                node.borrow().fmt_internal(f)?;
+                f.write_str("*")
+            }
+            NodeVal::OneOrMore(node) => {
+                node.borrow().fmt_internal(f)?;
+                f.write_str("+")
+            }
             NodeVal::Start => f.write_str("^"),
             NodeVal::End => f.write_str("$"),
-            NodeVal::Optional => f.write_str("?"),
+            NodeVal::Optional(node) => {
+                node.borrow().fmt_internal(f)?;
+                f.write_str("?")
+            }
             NodeVal::Group { group, cfg } => {
                 f.write_str("(")?;
 
@@ -100,11 +109,11 @@ impl fmt::Debug for Node {
 pub enum NodeVal {
     Word(String),
     Any,
-    ZeroOrMore,
-    OneOrMore,
+    ZeroOrMore(Rc<RefCell<Node>>),
+    OneOrMore(Rc<RefCell<Node>>),
     Start,
     End,
-    Optional,
+    Optional(Rc<RefCell<Node>>),
     Group {
         group: Rc<RefCell<Node>>,
         cfg: Option<GroupConfig>,
