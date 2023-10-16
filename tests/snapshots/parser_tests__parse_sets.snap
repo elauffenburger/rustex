@@ -1,0 +1,5 @@
+---
+source: tests/parser_tests.rs
+expression: parsed
+---
+ParseResult { 'hel'->[^'l', 'o']->' '->('123')->' w'->['o', 'r', 'l', 'd'] }

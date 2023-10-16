@@ -159,6 +159,8 @@ where
                     continue;
                 }
                 '[' => {
+                    _ = self.next();
+
                     let mut inverted = false;
                     if let Some(next) = self.peek() {
                         if *next == '^' {
