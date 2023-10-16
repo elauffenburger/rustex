@@ -49,6 +49,10 @@ impl<Iter> ParserImpl<Iter>
 where
     Iter: Iterator<Item = char>,
 {
+    const SPECIAL_CHARS: &[char] = &[
+        '(', ')', '{', '}', '[', ']', '|', '\\', '^', '$', '.', '*', '?', '+',
+    ];
+
     fn parse_group(&mut self) -> Result<NodeVal, ParseError> {
         self.next();
 
@@ -88,6 +92,28 @@ where
         })
     }
 
+    fn parse_word(&mut self) -> Result<NodeVal, ParseError> {
+        let mut word = String::new();
+        while let Some(ch) = self.iter.peek() {
+            if Self::is_special_char(ch) {
+                break;
+            }
+
+            let mut ch = self.next().unwrap();
+            if ch == '\\' {
+                ch = self.escape_next()?;
+            }
+
+            word.push(ch);
+        }
+
+        Ok(NodeVal::Word(word))
+    }
+
+    fn is_special_char(ch: &char) -> bool {
+        Self::SPECIAL_CHARS.contains(ch)
+    }
+
     fn parse(
         self: &mut Self,
         until: Option<char>,
@@ -107,16 +133,21 @@ where
 
             let new_node_val = match ch {
                 '{' => todo!(),
-                '(' => parse_group()?,
+                '(' => self.parse_group()?,
                 '|' => {
+                    _ = self.next();
+
                     // Grab the head of the current parse group and consider everything under it the left side.
                     let left = mem::take(&mut head);
+                    println!("left: {:?}", &left);
 
                     // Parse everything after the "or" as a separate group and consider it the right side.
-                    let right = match self.parse(None)? {
+                    let right = match self.parse(Some(')'))? {
                         None => return Err(ParseError::MissingRightSideOfOr),
                         Some(right) => right,
                     };
+
+                    println!("right: {:?}", &right);
 
                     // Construct the result.
                     let res_val = NodeVal::Or {
@@ -124,7 +155,6 @@ where
                         right,
                     };
 
-                    // Swap the or'd result back in as the head and prev node.
                     let new_head = rcref(Node {
                         val: res_val.clone(),
                         next: None,
@@ -132,7 +162,10 @@ where
                     mem::swap(&mut head, &mut Some(new_head.clone()));
                     mem::swap(&mut prev, &mut Some(new_head));
 
-                    res_val
+                    println!("new head: {:?}", &head);
+                    println!("new prev: {:?}", &prev);
+
+                    continue
                 }
                 '[' => {
                     let mut inverted = false;
@@ -160,14 +193,13 @@ where
 
                     NodeVal::Set { set, inverted }
                 }
-                '\\' => NodeVal::Char(self.escape_next()?),
                 '.' => NodeVal::Any,
                 '*' => NodeVal::ZeroOrMore,
                 '+' => NodeVal::OneOrMore,
                 '?' => NodeVal::Optional,
                 '^' => NodeVal::Start,
                 '$' => NodeVal::End,
-                _ => NodeVal::Char(ch),
+                _ => self.parse_word()?,
             };
 
             let new_node = rcref(Node {
@@ -185,7 +217,11 @@ where
 
                 // Update node to point to the new node.
                 prev = Some(new_node);
+
             }
+
+                println!("head: {:?}", &prev);
+                println!("prev: {:?}", &prev);
         }
 
         Ok(head)
@@ -263,7 +299,7 @@ pub struct Node {
 impl Node {
     fn fmt_internal(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match &self.val {
-            NodeVal::Char(ch) => f.write_fmt(format_args!("'{}'", ch)),
+            NodeVal::Word(word) => f.write_fmt(format_args!("'{}'", word)),
             NodeVal::Any => f.write_str("."),
             NodeVal::ZeroOrMore => f.write_str("*"),
             NodeVal::OneOrMore => f.write_str("+"),
@@ -307,11 +343,11 @@ impl Node {
                 f.write_str("]")
             }
             NodeVal::Or { left, right } => {
-                f.write_str("or(l(")?;
+                f.write_str("or<l<")?;
                 left.as_ref().borrow().fmt_internal(f)?;
-                f.write_str("), r(")?;
+                f.write_str(">, r<")?;
                 right.as_ref().borrow().fmt_internal(f)?;
-                f.write_str(")")
+                f.write_str(">")
             }
         }?;
 
@@ -333,7 +369,7 @@ impl fmt::Debug for Node {
 
 #[derive(Debug, Clone)]
 pub enum NodeVal {
-    Char(char),
+    Word(String),
     Any,
     ZeroOrMore,
     OneOrMore,
@@ -359,27 +395,10 @@ mod test {
     use super::*;
 
     fn node_from_literal_str(val: &str) -> Option<Rc<RefCell<Node>>> {
-        let mut res = None;
-        let mut node = None;
-
-        for c in val.chars() {
-            let new_node = rcref(Node {
-                val: NodeVal::Char(c),
-                next: None,
-            });
-
-            if node.is_none() {
-                node = Some(new_node.clone());
-                res = Some(new_node);
-            } else {
-                let node_val = mem::take(&mut node);
-                (*node_val.unwrap()).borrow_mut().next = Some(new_node.clone());
-
-                node = Some(new_node);
-            }
-        }
-
-        res
+        Some(rcref(Node {
+            val: NodeVal::Word(val.to_string()),
+            next: None,
+        }))
     }
 
     #[test]
@@ -445,9 +464,7 @@ mod test {
     fn test_parse_or() {
         let parser = Parser::new();
 
-        let parsed = parser
-            .parse_str("(foo|(bar))ab|c")
-            .expect("failed to parse");
+        let parsed = parser.parse_str("(foo)|((bar)|(baz)qux)").expect("failed to parse");
         println!("{:?}", parsed);
         todo!();
     }
