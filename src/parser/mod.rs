@@ -16,19 +16,23 @@ pub enum ParseError {
     MissingCharacterToEscape,
     MissingRightSideOfOr,
     BadGroupConfig,
+    UnexpectedRepititionRangeCh(char),
 }
 
 impl fmt::Display for ParseError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             ParseError::UnexpectedCharErr(ch) => {
-                f.write_fmt(format_args!("unexpected char {}", ch))
+                f.write_fmt(format_args!("unexpected char '{}'", ch))
             }
             ParseError::UnterminatedCharSet => f.write_str("unterminated character set"),
             ParseError::EmptyCaptureGroup => f.write_str("empty capture group"),
             ParseError::MissingCharacterToEscape => f.write_str("missing character to escape"),
             ParseError::MissingRightSideOfOr => f.write_str("missing right side of or"),
             ParseError::BadGroupConfig => f.write_str("bad group config"),
+            ParseError::UnexpectedRepititionRangeCh(ch) => {
+                f.write_fmt(format_args!("unexpected char '{}' in repitition range", ch))
+            }
         }
     }
 }
@@ -55,7 +59,7 @@ where
 
         let group_config = match self.peek() {
             Some('?') => {
-                let _ = self.next();
+                self.next();
                 match self.next() {
                     Some(':') => Some(GroupConfig::NonCapturing),
                     Some('<') => {
@@ -87,6 +91,49 @@ where
             group,
             cfg: group_config,
         })
+    }
+
+    fn parse_repitition_range_vals(&mut self) -> Result<(u32, Option<u32>), ParseError> {
+        self.next();
+
+        let mut min_str = String::new();
+        let mut max_str = None;
+
+        while let Some(ch) = self.next() {
+            match ch {
+                '0'..='9' => {
+                    min_str.push(ch);
+                }
+                '}' => break,
+                ',' => {
+                    let mut max_str_local = String::new();
+                    while let Some(ch) = self.next() {
+                        match ch {
+                            '0'..='9' => {
+                                max_str_local.push(ch);
+                            }
+                            '}' => break,
+                            _ => return Err(ParseError::UnexpectedRepititionRangeCh(ch)),
+                        }
+                    }
+
+                    max_str = Some(max_str_local);
+                    break;
+                }
+                _ => return Err(ParseError::UnexpectedRepititionRangeCh(ch)),
+            }
+        }
+
+        let min = min_str
+            .parse::<u32>()
+            .expect("should have caught bad u32 in parsing");
+
+        let max = max_str.map(|max| {
+            max.parse::<u32>()
+                .expect("should have caught bad u32 in parsing")
+        });
+
+        Ok((min, max))
     }
 
     fn parse_word(&mut self) -> Result<NodeVal, ParseError> {
@@ -129,10 +176,37 @@ where
             }
 
             let new_node_val = match ch {
-                '{' => todo!(),
-                '(' => self.parse_group()?,
+                '{' => {
+                    // Grab the prev node.
+                    let old_prev = mem::take(&mut prev).unwrap();
+
+                    // Grab the val of the prev node.
+                    let mut old_prev_val = NodeVal::Any;
+                    mem::swap(&mut old_prev_val, &mut old_prev.as_ref().borrow_mut().val);
+
+                    // Parse the repitition range vals.
+                    let (min, max) = self.parse_repitition_range_vals()?;
+
+                    // Construct the result.
+                    let res_val = NodeVal::RepititionRange {
+                        min,
+                        max,
+                        node: rcref(Node {
+                            val: old_prev_val,
+                            next: None,
+                        }),
+                    };
+
+                    // Swap the result value into the prev node.
+                    old_prev.as_ref().borrow_mut().val = res_val;
+
+                    // Swap the prev node back in.
+                    mem::swap(&mut prev, &mut Some(old_prev));
+
+                    continue;
+                }
                 '|' => {
-                    _ = self.next();
+                    self.next();
 
                     // Grab the head of the current parse group and consider everything under it the left side.
                     let left = mem::take(&mut head);
@@ -159,13 +233,13 @@ where
                     continue;
                 }
                 '[' => {
-                    _ = self.next();
+                    self.next();
 
                     let mut inverted = false;
                     if let Some(next) = self.peek() {
                         if *next == '^' {
                             inverted = true;
-                            _ = self.next();
+                            self.next();
                         }
                     }
 
@@ -192,6 +266,7 @@ where
                 '?' => NodeVal::Optional,
                 '^' => NodeVal::Start,
                 '$' => NodeVal::End,
+                '(' => self.parse_group()?,
                 _ => self.parse_word()?,
             };
 

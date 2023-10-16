@@ -1,0 +1,5 @@
+---
+source: tests/parser_tests.rs
+expression: parsed
+---
+ParseResult { ('foo'){0,5}->'bar'{1} }

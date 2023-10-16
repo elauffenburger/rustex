@@ -67,3 +67,14 @@ fn test_parse_or() {
 
     insta::assert_debug_snapshot!(parsed);
 }
+
+#[test]
+fn test_parse_repitition_range() {
+    let parser = Parser::new();
+
+    let parsed = parser
+        .parse_str("(foo){0,5}bar{1}")
+        .expect("failed to parse");
+
+    insta::assert_debug_snapshot!(parsed);
+}

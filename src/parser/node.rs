@@ -64,6 +64,20 @@ impl Node {
                 right.as_ref().borrow().fmt_internal(f)?;
                 f.write_str(">")
             }
+            NodeVal::RepititionRange { min, max, node } => {
+                node.borrow().fmt_internal(f)?;
+
+                f.write_str("{")?;
+                f.write_fmt(format_args!("{}", min))?;
+
+                if let Some(max) = max {
+                    f.write_fmt(format_args!(",{}", max))?;
+                }
+
+                f.write_str("}")?;
+
+                Ok(())
+            }
         }?;
 
         match &self.next {
@@ -102,5 +116,10 @@ pub enum NodeVal {
     Or {
         left: Rc<RefCell<Node>>,
         right: Rc<RefCell<Node>>,
+    },
+    RepititionRange {
+        min: u32,
+        max: Option<u32>,
+        node: Rc<RefCell<Node>>,
     },
 }
