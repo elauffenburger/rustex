@@ -158,6 +158,26 @@ where
         Self::SPECIAL_CHARS.contains(ch)
     }
 
+    fn decorate_node<F: FnOnce(NodeVal) -> NodeVal>(
+        node: &mut Option<Rc<RefCell<Node>>>,
+        decorator: F,
+    ) {
+        // Grab the node.
+        let old_prev = mem::take(node).unwrap();
+
+        // Grab the val of the prev node.
+        let mut old_prev_val = NodeVal::Any;
+        mem::swap(&mut old_prev_val, &mut old_prev.as_ref().borrow_mut().val);
+
+        let res_val = decorator(old_prev_val);
+
+        // Swap the result value into the prev node.
+        old_prev.as_ref().borrow_mut().val = res_val;
+
+        // Swap the prev node back in.
+        mem::swap(node, &mut Some(old_prev));
+    }
+
     fn parse(
         self: &mut Self,
         until: Option<char>,
@@ -177,31 +197,17 @@ where
 
             let new_node_val = match ch {
                 '{' => {
-                    // Grab the prev node.
-                    let old_prev = mem::take(&mut prev).unwrap();
-
-                    // Grab the val of the prev node.
-                    let mut old_prev_val = NodeVal::Any;
-                    mem::swap(&mut old_prev_val, &mut old_prev.as_ref().borrow_mut().val);
-
                     // Parse the repitition range vals.
                     let (min, max) = self.parse_repitition_range_vals()?;
 
-                    // Construct the result.
-                    let res_val = NodeVal::RepititionRange {
+                    Self::decorate_node(&mut prev, |old_prev_val| NodeVal::RepititionRange {
                         min,
                         max,
                         node: rcref(Node {
                             val: old_prev_val,
                             next: None,
                         }),
-                    };
-
-                    // Swap the result value into the prev node.
-                    old_prev.as_ref().borrow_mut().val = res_val;
-
-                    // Swap the prev node back in.
-                    mem::swap(&mut prev, &mut Some(old_prev));
+                    });
 
                     continue;
                 }
