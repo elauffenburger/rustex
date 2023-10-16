@@ -1,6 +1,9 @@
 use core::fmt;
 use std::{cell::RefCell, iter::Peekable, mem, rc::Rc};
 
+mod node;
+pub use node::*;
+
 fn rcref<T>(val: T) -> Rc<RefCell<T>> {
     Rc::new(RefCell::new(val))
 }
@@ -31,12 +34,6 @@ impl fmt::Display for ParseError {
 }
 
 pub struct Parser {}
-
-#[derive(Debug, Clone)]
-pub enum GroupConfig {
-    NonCapturing,
-    Named(String),
-}
 
 struct ParserImpl<Iter>
 where
@@ -95,7 +92,7 @@ where
     fn parse_word(&mut self) -> Result<NodeVal, ParseError> {
         let mut word = String::new();
         while let Some(ch) = self.iter.peek() {
-            if Self::is_special_char(ch) {
+            if Self::is_special_char(ch) && *ch != '\\' {
                 break;
             }
 
@@ -139,15 +136,12 @@ where
 
                     // Grab the head of the current parse group and consider everything under it the left side.
                     let left = mem::take(&mut head);
-                    println!("left: {:?}", &left);
 
                     // Parse everything after the "or" as a separate group and consider it the right side.
                     let right = match self.parse(Some(')'))? {
                         None => return Err(ParseError::MissingRightSideOfOr),
                         Some(right) => right,
                     };
-
-                    println!("right: {:?}", &right);
 
                     // Construct the result.
                     let res_val = NodeVal::Or {
@@ -162,10 +156,7 @@ where
                     mem::swap(&mut head, &mut Some(new_head.clone()));
                     mem::swap(&mut prev, &mut Some(new_head));
 
-                    println!("new head: {:?}", &head);
-                    println!("new prev: {:?}", &prev);
-
-                    continue
+                    continue;
                 }
                 '[' => {
                     let mut inverted = false;
@@ -217,11 +208,7 @@ where
 
                 // Update node to point to the new node.
                 prev = Some(new_node);
-
             }
-
-                println!("head: {:?}", &prev);
-                println!("prev: {:?}", &prev);
         }
 
         Ok(head)
@@ -288,184 +275,5 @@ impl fmt::Debug for ParseResult {
             }
         }
         f.write_str(" }")
-    }
-}
-
-pub struct Node {
-    pub val: NodeVal,
-    pub next: Option<Rc<RefCell<Node>>>,
-}
-
-impl Node {
-    fn fmt_internal(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match &self.val {
-            NodeVal::Word(word) => f.write_fmt(format_args!("'{}'", word)),
-            NodeVal::Any => f.write_str("."),
-            NodeVal::ZeroOrMore => f.write_str("*"),
-            NodeVal::OneOrMore => f.write_str("+"),
-            NodeVal::Start => f.write_str("^"),
-            NodeVal::End => f.write_str("$"),
-            NodeVal::Optional => f.write_str("?"),
-            NodeVal::Group { group, cfg } => {
-                f.write_str("(")?;
-
-                match cfg {
-                    None => {}
-                    Some(GroupConfig::Named(name)) => {
-                        f.write_fmt(format_args!("<{}>", name))?;
-                    }
-                    Some(GroupConfig::NonCapturing) => {
-                        f.write_str("?:")?;
-                    }
-                }
-
-                group.as_ref().borrow().fmt_internal(f)?;
-
-                f.write_str(")")
-            }
-            NodeVal::Set { set, inverted } => {
-                f.write_str("[")?;
-                if *inverted {
-                    f.write_str("^")?;
-                }
-
-                {
-                    let mut iter = set.iter().peekable();
-                    while let Some(ch) = iter.next() {
-                        f.write_fmt(format_args!("'{}'", ch))?;
-
-                        if let Some(_) = iter.peek() {
-                            f.write_str(", ")?;
-                        }
-                    }
-                }
-
-                f.write_str("]")
-            }
-            NodeVal::Or { left, right } => {
-                f.write_str("or<l<")?;
-                left.as_ref().borrow().fmt_internal(f)?;
-                f.write_str(">, r<")?;
-                right.as_ref().borrow().fmt_internal(f)?;
-                f.write_str(">")
-            }
-        }?;
-
-        match &self.next {
-            None => Ok(()),
-            Some(node) => {
-                f.write_str("->")?;
-                node.as_ref().borrow().fmt_internal(f)
-            }
-        }
-    }
-}
-
-impl fmt::Debug for Node {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.fmt_internal(f)
-    }
-}
-
-#[derive(Debug, Clone)]
-pub enum NodeVal {
-    Word(String),
-    Any,
-    ZeroOrMore,
-    OneOrMore,
-    Start,
-    End,
-    Optional,
-    Group {
-        group: Rc<RefCell<Node>>,
-        cfg: Option<GroupConfig>,
-    },
-    Set {
-        set: Vec<char>,
-        inverted: bool,
-    },
-    Or {
-        left: Rc<RefCell<Node>>,
-        right: Rc<RefCell<Node>>,
-    },
-}
-
-#[cfg(test)]
-mod test {
-    use super::*;
-
-    fn node_from_literal_str(val: &str) -> Option<Rc<RefCell<Node>>> {
-        Some(rcref(Node {
-            val: NodeVal::Word(val.to_string()),
-            next: None,
-        }))
-    }
-
-    #[test]
-    fn test_parse_alphanum() {
-        let parser = Parser::new();
-
-        let parsed = parser
-            .parse_str("hello world 123")
-            .expect("failed to parse");
-        assert_eq!(
-            format!("{:?}", parsed),
-            format!(
-                "{:?}",
-                ParseResult {
-                    head: node_from_literal_str("hello world 123")
-                }
-            ),
-        )
-    }
-
-    #[test]
-    fn test_parse_groups() {
-        let parser = Parser::new();
-
-        let parsed = parser
-            .parse_str("he(llo (1(23) wor)ld i am (?<my_group>named) (?:unnamed) groups)")
-            .expect("failed to parse");
-        println!("{:?}", parsed);
-        todo!();
-    }
-
-    #[test]
-    fn test_parse_sets() {
-        let parser = Parser::new();
-
-        let parsed = parser
-            .parse_str("hel[^lo] (123) w[orld]")
-            .expect("failed to parse");
-        println!("{:?}", parsed);
-        todo!();
-    }
-
-    #[test]
-    fn test_parse_escaped() {
-        let parser = Parser::new();
-
-        let parsed = parser
-            .parse_str("foo\\[ bar\\\\ baz\\^")
-            .expect("failed to parse");
-
-        assert_eq!(
-            format!("{:?}", parsed),
-            format!(
-                "{:?}",
-                ParseResult {
-                    head: node_from_literal_str("foo[ bar\\ baz^")
-                }
-            ),
-        )
-    }
-
-    #[test]
-    fn test_parse_or() {
-        let parser = Parser::new();
-
-        let parsed = parser.parse_str("(foo)|((bar)|(baz)qux)").expect("failed to parse");
-        println!("{:?}", parsed);
-        todo!();
     }
 }

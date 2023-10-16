@@ -1,0 +1,5 @@
+---
+source: tests/parser_tests.rs
+expression: parsed
+---
+ParseResult { 'he'->('llo '->('1'->('23')->' wor')->'ld i am '->(<my_group>'named')->' '->(?:'unnamed')->' groups') }
