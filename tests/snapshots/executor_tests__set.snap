@@ -1,0 +1,9 @@
+---
+source: tests/executor_tests.rs
+expression: result
+---
+ExecResult {
+    start: 0,
+    end: 5,
+    groups: {},
+}

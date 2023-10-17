@@ -7,7 +7,7 @@ use std::{
 
 use crate::parser::{Node, ParseResult};
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ExecResult {
     pub start: usize,
     pub end: usize,
@@ -88,7 +88,7 @@ impl<'input> ExecutorImpl<'input> {
             None => match res {
                 None => return Ok(res),
                 Some(mut res) => {
-                    res.end = cur;
+                    res.end = cur - 1;
 
                     return Ok(Some(res));
                 }
@@ -108,7 +108,7 @@ impl<'input> ExecutorImpl<'input> {
                 }
             }
             crate::parser::NodeVal::End => {
-                if cur == self.n - 1 {
+                if cur == self.n {
                     self.exec(res, node.next.clone(), cur)
                 } else {
                     Ok(None)
@@ -125,16 +125,16 @@ impl<'input> ExecutorImpl<'input> {
                         Some((start, end)) => self.exec(
                             Some(ExecResult {
                                 groups: hashmap! {},
-                                start: start,
+                                start,
                                 end: 0,
                             }),
                             node.next.clone(),
-                            end,
+                            end + 1,
                         ),
                     },
                     res @ Some(_) => match self.find_word(word.as_str(), cur, false) {
                         None => Ok(None),
-                        Some((_, end)) => self.exec(res, node.next.clone(), end),
+                        Some((_, end)) => self.exec(res, node.next.clone(), end + 1),
                     },
                 }
             }
@@ -142,8 +142,25 @@ impl<'input> ExecutorImpl<'input> {
             crate::parser::NodeVal::OneOrMore(_) => todo!(),
             crate::parser::NodeVal::Optional(_) => todo!(),
             crate::parser::NodeVal::Group { .. } => todo!(),
-            crate::parser::NodeVal::Set { .. } => todo!(),
-            crate::parser::NodeVal::Or { .. } => todo!(),
+            crate::parser::NodeVal::Set { set, inverted } => {
+                let ch = match self.input.chars().nth(cur) {
+                    None => todo!(),
+                    Some(ch) => ch,
+                };
+
+                match (inverted, set.contains(&ch)) {
+                    // not inverted, did find:
+                    (false, true) | (true, false) => self.exec(res, node.next.clone(), cur + 1),
+                    _ => Ok(None),
+                }
+            }
+            crate::parser::NodeVal::Or { left, right } => {
+                if let Some(left_match) = self.exec(res.clone(), Some(left.clone()), cur)? {}
+
+                if let Some(right_match) = self.exec(res.clone(), Some(right.clone()), cur)? {}
+
+                Ok(None)
+            }
             crate::parser::NodeVal::RepetitionRange { .. } => todo!(),
         }
     }
