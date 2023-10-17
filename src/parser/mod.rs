@@ -193,6 +193,69 @@ where
         Ok(())
     }
 
+    fn split_word_node_option_and_decorate_last_char<F: FnOnce(Rc<RefCell<Node>>) -> NodeVal>(
+        node: &mut Option<Rc<RefCell<Node>>>,
+        decorator: F,
+    ) -> Result<(), ParseError> {
+        let take_last_ch = match node {
+            Some(node) => match node.as_ref().borrow().val {
+                NodeVal::Word(ref word) => word.len() > 1,
+                _ => false,
+            },
+            None => return Err(ParseError::MissingLeftSideOfModifier),
+        };
+
+        if !take_last_ch {
+            return Self::decorate_node_option(node, decorator);
+        }
+
+        let orig_node = mem::take(node).unwrap();
+
+        let mut orig_node_val = NodeVal::Any;
+        mem::swap(&mut orig_node.as_ref().borrow_mut().val, &mut orig_node_val);
+
+        let (new_node_val_word, last_ch_as_str) = match orig_node_val {
+            NodeVal::Word(word) => {
+                let mut new_node_val_word = String::new();
+                let mut last_ch_as_str = None;
+                let mut iter = word.chars().peekable();
+
+                while let Some(ch) = iter.next() {
+                    if iter.peek().is_none() {
+                        last_ch_as_str = Some(String::from(ch));
+                        break;
+                    }
+
+                    new_node_val_word.push(ch);
+                }
+
+                (
+                    new_node_val_word,
+                    last_ch_as_str.expect("should have found a last char in word"),
+                )
+            }
+            _ => unreachable!("already confirmed the value is a NodeVal::Word"),
+        };
+
+        let new_next = rcref(Node {
+            val: decorator(rcref(Node {
+                val: NodeVal::Word(last_ch_as_str),
+                next: None,
+            })),
+            next: None,
+        });
+
+        // Swap in the new node value and node.next (which will be swapped into the node addr).
+        let mut orig_node_mut = orig_node.as_ref().borrow_mut();
+        orig_node_mut.val = NodeVal::Word(new_node_val_word);
+        orig_node_mut.next = Some(new_next.clone());
+
+        // Swap in the new node.
+        mem::swap(node, &mut Some(new_next));
+
+        Ok(())
+    }
+
     fn parse(
         self: &mut Self,
         until: Option<char>,
@@ -286,65 +349,9 @@ where
                 '*' => {
                     self.next();
 
-                    // TODO: only repeat last char in word.
-
-                    let take_last_ch = match &prev {
-                        Some(node) => match node.as_ref().borrow().val {
-                            NodeVal::Word(ref word) => word.len() > 1,
-                            _ => false,
-                        },
-                        None => return Err(ParseError::MissingLeftSideOfModifier),
-                    };
-
-                    if take_last_ch {
-                        let orig_prev = mem::take(&mut prev).unwrap();
-
-                        let mut orig_prev_val = NodeVal::Any;
-                        mem::swap(&mut orig_prev.as_ref().borrow_mut().val, &mut orig_prev_val);
-
-                        let (new_prev_val_word, last_ch_as_str) = match orig_prev_val {
-                            NodeVal::Word(word) => {
-                                let mut new_prev_val_word = String::new();
-                                let mut last_ch_as_str = None;
-                                let mut iter = word.chars().peekable();
-
-                                while let Some(ch) = iter.next() {
-                                    if iter.peek().is_none() {
-                                        last_ch_as_str = Some(String::from(ch));
-                                        break;
-                                    }
-
-                                    new_prev_val_word.push(ch);
-                                }
-
-                                (
-                                    new_prev_val_word,
-                                    last_ch_as_str.expect("should have found a last char in word"),
-                                )
-                            }
-                            _ => unreachable!("already confirmed the value is a NodeVal::Word"),
-                        };
-
-                        let new_next = rcref(Node {
-                            val: NodeVal::ZeroOrMore(rcref(Node {
-                                val: NodeVal::Word(last_ch_as_str),
-                                next: None,
-                            })),
-                            next: None,
-                        });
-
-                        // Swap in the new prev value and prev.next (which will become prev).
-                        let mut orig_prev_mut = orig_prev.as_ref().borrow_mut();
-                        orig_prev_mut.val = NodeVal::Word(new_prev_val_word);
-                        orig_prev_mut.next = Some(new_next.clone());
-
-                        // Swap in the new prev.
-                        mem::swap(&mut prev, &mut Some(new_next));
-                    } else {
-                        Self::decorate_node_option(&mut prev, |old_prev| {
-                            NodeVal::ZeroOrMore(old_prev)
-                        })?;
-                    }
+                    Self::split_word_node_option_and_decorate_last_char(&mut prev, |old_node| {
+                        NodeVal::ZeroOrMore(old_node)
+                    })?;
 
                     continue;
                 }

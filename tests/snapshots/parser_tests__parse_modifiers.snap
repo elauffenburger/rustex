@@ -1,6 +1,5 @@
 ---
 source: tests/parser_tests.rs
-assertion_line: 90
 expression: parsed
 ---
 ParseResult { 'fo'->'o'*->'bar'+->('baz')? }
