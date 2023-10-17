@@ -1,0 +1,8 @@
+---
+source: tests/parser_tests.rs
+assertion_line: 88
+expression: err
+---
+unexpected char '!' at :5
+foo\!bar
+    ^

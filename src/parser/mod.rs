@@ -8,7 +8,6 @@ fn rcref<T>(val: T) -> Rc<RefCell<T>> {
     Rc::new(RefCell::new(val))
 }
 
-#[derive(Debug)]
 pub enum ParseError {
     UnexpectedCharErr(char),
     UnterminatedCharSet,
@@ -21,7 +20,7 @@ pub enum ParseError {
     UnexpectedEmptyNodeOption,
 }
 
-impl fmt::Display for ParseError {
+impl fmt::Debug for ParseError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             ParseError::UnexpectedCharErr(ch) => {
@@ -43,6 +42,23 @@ impl fmt::Display for ParseError {
     }
 }
 
+pub struct ParseErrorWithContext<'str> {
+    err: ParseError,
+    str: &'str str,
+    index: usize,
+}
+
+impl<'str> fmt::Debug for ParseErrorWithContext<'str> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.err.fmt(f)?;
+        f.write_fmt(format_args!(" at :{}\n", self.index))?;
+        f.write_str(self.str)?;
+        f.write_str("\n")?;
+        f.write_str(" ".repeat(self.index - 1).as_str())?;
+        f.write_str("^")
+    }
+}
+
 pub struct Parser {}
 
 struct ParserImpl<Iter>
@@ -50,6 +66,7 @@ where
     Iter: Iterator<Item = char>,
 {
     iter: Peekable<Iter>,
+    index: usize,
 }
 
 impl<Iter> ParserImpl<Iter>
@@ -413,6 +430,7 @@ where
     }
 
     fn next(&mut self) -> Option<char> {
+        self.index += 1;
         self.iter.next()
     }
 
@@ -443,13 +461,21 @@ impl Parser {
         Parser {}
     }
 
-    pub fn parse_str(self: &Self, input: &str) -> Result<ParseResult, ParseError> {
+    pub fn parse_str<'str>(
+        self: &Self,
+        input: &'str str,
+    ) -> Result<ParseResult, ParseErrorWithContext<'str>> {
         let mut parser = ParserImpl {
             iter: input.chars().peekable(),
+            index: 0,
         };
 
         Ok(ParseResult {
-            head: parser.parse(None)?,
+            head: parser.parse(None).map_err(|err| ParseErrorWithContext {
+                err,
+                str: input,
+                index: parser.index,
+            })?,
         })
     }
 }

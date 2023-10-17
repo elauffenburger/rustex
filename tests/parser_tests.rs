@@ -76,3 +76,14 @@ fn test_parse_modifiers() {
 
     insta::assert_debug_snapshot!(parsed);
 }
+
+#[test]
+fn test_unexpected_char_err() {
+    let parser = Parser::new();
+
+    let err = parser
+        .parse_str("foo\\!bar")
+        .expect_err("expected parse failure");
+
+    insta::assert_debug_snapshot!(err);
+}
