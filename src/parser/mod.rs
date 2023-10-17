@@ -45,16 +45,16 @@ impl fmt::Debug for ParseError {
 pub struct ParseErrorWithContext<'str> {
     err: ParseError,
     str: &'str str,
-    index: usize,
+    cur: usize,
 }
 
 impl<'str> fmt::Debug for ParseErrorWithContext<'str> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         self.err.fmt(f)?;
-        f.write_fmt(format_args!(" at :{}\n", self.index))?;
+        f.write_fmt(format_args!(" at :{}\n", self.cur))?;
         f.write_str(self.str)?;
         f.write_str("\n")?;
-        f.write_str(" ".repeat(self.index - 1).as_str())?;
+        f.write_str(" ".repeat(self.cur - 1).as_str())?;
         f.write_str("^")
     }
 }
@@ -474,7 +474,7 @@ impl Parser {
             head: parser.parse(None).map_err(|err| ParseErrorWithContext {
                 err,
                 str: input,
-                index: parser.index,
+                cur: parser.index,
             })?,
         })
     }
