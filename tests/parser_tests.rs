@@ -56,7 +56,7 @@ fn test_parse_or() {
 }
 
 #[test]
-fn test_parse_repitition_range() {
+fn test_parse_repetition_range() {
     let parser = Parser::new();
 
     let parsed = parser

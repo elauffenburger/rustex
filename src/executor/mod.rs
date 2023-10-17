@@ -144,7 +144,7 @@ impl<'input> ExecutorImpl<'input> {
             crate::parser::NodeVal::Group { .. } => todo!(),
             crate::parser::NodeVal::Set { .. } => todo!(),
             crate::parser::NodeVal::Or { .. } => todo!(),
-            crate::parser::NodeVal::RepititionRange { .. } => todo!(),
+            crate::parser::NodeVal::RepetitionRange { .. } => todo!(),
         }
     }
 }

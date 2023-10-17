@@ -15,7 +15,7 @@ pub enum ParseError {
     MissingCharacterToEscape,
     MissingRightSideOfOr,
     BadGroupConfig,
-    UnexpectedRepititionRangeCh(char),
+    UnexpectedRepetitionRangeCh(char),
     MissingLeftSideOfModifier,
     UnexpectedEmptyNodeOption,
 }
@@ -31,8 +31,8 @@ impl fmt::Debug for ParseError {
             ParseError::MissingCharacterToEscape => f.write_str("missing character to escape"),
             ParseError::MissingRightSideOfOr => f.write_str("missing right side of or"),
             ParseError::BadGroupConfig => f.write_str("bad group config"),
-            ParseError::UnexpectedRepititionRangeCh(ch) => {
-                f.write_fmt(format_args!("unexpected char '{}' in repitition range", ch))
+            ParseError::UnexpectedRepetitionRangeCh(ch) => {
+                f.write_fmt(format_args!("unexpected char '{}' in repetition range", ch))
             }
             ParseError::MissingLeftSideOfModifier => f.write_str("missing left side of modifier"),
             ParseError::UnexpectedEmptyNodeOption => {
@@ -116,7 +116,7 @@ where
         })
     }
 
-    fn parse_repitition_range_vals(&mut self) -> Result<(u32, Option<u32>), ParseError> {
+    fn parse_repetition_range_vals(&mut self) -> Result<(u32, Option<u32>), ParseError> {
         self.next();
 
         let mut min_str = String::new();
@@ -136,14 +136,14 @@ where
                                 max_str_local.push(ch);
                             }
                             '}' => break,
-                            _ => return Err(ParseError::UnexpectedRepititionRangeCh(ch)),
+                            _ => return Err(ParseError::UnexpectedRepetitionRangeCh(ch)),
                         }
                     }
 
                     max_str = Some(max_str_local);
                     break;
                 }
-                _ => return Err(ParseError::UnexpectedRepititionRangeCh(ch)),
+                _ => return Err(ParseError::UnexpectedRepetitionRangeCh(ch)),
             }
         }
 
@@ -292,10 +292,10 @@ where
 
             let new_node_val = match ch {
                 '{' => {
-                    // Parse the repitition range vals.
-                    let (min, max) = self.parse_repitition_range_vals()?;
+                    // Parse the repetition range vals.
+                    let (min, max) = self.parse_repetition_range_vals()?;
 
-                    Self::decorate_node_option(&mut prev, |old_prev| NodeVal::RepititionRange {
+                    Self::decorate_node_option(&mut prev, |old_prev| NodeVal::RepetitionRange {
                         min,
                         max,
                         node: old_prev,

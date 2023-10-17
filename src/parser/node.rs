@@ -74,7 +74,7 @@ impl Node {
                 right.as_ref().borrow().fmt_internal(f)?;
                 f.write_str(">")
             }
-            NodeVal::RepititionRange { min, max, node } => {
+            NodeVal::RepetitionRange { min, max, node } => {
                 node.borrow().fmt_internal(f)?;
 
                 f.write_str("{")?;
@@ -130,7 +130,7 @@ pub enum NodeVal {
         left: Rc<RefCell<Node>>,
         right: Rc<RefCell<Node>>,
     },
-    RepititionRange {
+    RepetitionRange {
         min: u32,
         max: Option<u32>,
         node: Rc<RefCell<Node>>,
