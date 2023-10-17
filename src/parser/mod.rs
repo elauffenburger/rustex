@@ -164,16 +164,16 @@ where
         Self::SPECIAL_CHARS.contains(ch)
     }
 
-    fn decorate_node<F: FnOnce(Rc<RefCell<Node>>) -> NodeVal>(
-        node: &mut Rc<RefCell<Node>>,
+    fn decorate_node_option<F: FnOnce(Rc<RefCell<Node>>) -> NodeVal>(
+        node: &mut Option<Rc<RefCell<Node>>>,
         decorator: F,
-    ) {
+    ) -> Result<(), ParseError> {
+        if node.is_none() {
+            return Err(ParseError::UnexpectedEmptyNodeOption);
+        }
+
         // Grab the node.
-        let mut orig_node = rcref(Node {
-            val: NodeVal::Any,
-            next: None,
-        });
-        mem::swap(&mut orig_node, node);
+        let orig_node = mem::take(node).unwrap();
 
         // Grab the val of the original node.
         let mut orig_node_val = NodeVal::Any;
@@ -186,22 +186,6 @@ where
 
         // Swap the result value into the moved node.
         orig_node.as_ref().borrow_mut().val = res_val;
-
-        // Swap the modified node back into the original node addr.
-        mem::swap(node, &mut orig_node);
-    }
-
-    fn decorate_node_option<F: FnOnce(Rc<RefCell<Node>>) -> NodeVal>(
-        node: &mut Option<Rc<RefCell<Node>>>,
-        decorator: F,
-    ) -> Result<(), ParseError> {
-        if node.is_none() {
-            return Err(ParseError::UnexpectedEmptyNodeOption);
-        }
-
-        // Grab the node.
-        let mut orig_node = mem::take(node).unwrap();
-        Self::decorate_node(&mut orig_node, decorator);
 
         // Swap the modified node back into the node addr.
         mem::swap(node, &mut Some(orig_node));
