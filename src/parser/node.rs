@@ -1,4 +1,6 @@
-use std::{cell::RefCell, fmt, rc::Rc, collections};
+use std::{cell::RefCell, fmt, rc::Rc};
+
+use indexmap::IndexSet;
 
 #[derive(Debug, Clone)]
 pub enum GroupConfig {
@@ -123,7 +125,7 @@ pub enum NodeVal {
         cfg: Option<GroupConfig>,
     },
     Set {
-        set: collections::HashSet<char>,
+        set: IndexSet<char>,
         inverted: bool,
     },
     Or {

@@ -4,5 +4,6 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+indexmap = "2.0.2"
 insta = "1.34.0"
 maplit = "1.0.2"

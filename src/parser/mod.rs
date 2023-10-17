@@ -342,7 +342,7 @@ where
                     }
 
                     let mut found_end = false;
-                    let mut set = collections::HashSet::new();
+                    let mut set = indexmap::IndexSet::new();
                     while let (Some(ch), escaped) = self.next_escaped()? {
                         if !escaped && ch == ']' {
                             found_end = true;
