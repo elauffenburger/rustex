@@ -1,15 +1,17 @@
 use core::fmt;
 use std::{
     cell::RefCell,
-    collections::{self, hash_map},
+    collections::{self},
     rc::Rc,
 };
 
 use crate::parser::{Node, ParseResult};
 
+#[derive(Debug)]
 pub struct ExecResult {
-    start: usize,
-    groups: collections::HashMap<String, String>,
+    pub start: usize,
+    pub end: usize,
+    pub groups: collections::HashMap<String, String>,
 }
 
 pub enum ExecError {
@@ -59,14 +61,13 @@ impl<'input> ExecutorImpl<'input> {
         let mut cur = start;
 
         loop {
-            let remaining_n = self.n - cur;
-
-            if remaining_n < word_n {
+            if cur + word_n > self.n {
                 return None;
             }
 
-            if *word == self.input[cur..word_n] {
-                return Some((cur, cur + word_n));
+            let substr = &self.input[cur..cur + word_n];
+            if word == substr {
+                return Some((cur, cur + word_n - 1));
             }
 
             if !can_move_window {
@@ -84,7 +85,14 @@ impl<'input> ExecutorImpl<'input> {
         cur: usize,
     ) -> Result<Option<ExecResult>, ExecError> {
         let node = match node {
-            None => return Ok(res),
+            None => match res {
+                None => return Ok(res),
+                Some(mut res) => {
+                    res.end = cur;
+
+                    return Ok(Some(res));
+                }
+            },
             Some(node) => node,
         };
 
@@ -118,6 +126,7 @@ impl<'input> ExecutorImpl<'input> {
                             Some(ExecResult {
                                 groups: hashmap! {},
                                 start: start,
+                                end: 0,
                             }),
                             node.next.clone(),
                             end,
@@ -132,10 +141,10 @@ impl<'input> ExecutorImpl<'input> {
             crate::parser::NodeVal::ZeroOrMore(_) => todo!(),
             crate::parser::NodeVal::OneOrMore(_) => todo!(),
             crate::parser::NodeVal::Optional(_) => todo!(),
-            crate::parser::NodeVal::Group { group, cfg } => todo!(),
-            crate::parser::NodeVal::Set { set, inverted } => todo!(),
-            crate::parser::NodeVal::Or { left, right } => todo!(),
-            crate::parser::NodeVal::RepititionRange { min, max, node } => todo!(),
+            crate::parser::NodeVal::Group { .. } => todo!(),
+            crate::parser::NodeVal::Set { .. } => todo!(),
+            crate::parser::NodeVal::Or { .. } => todo!(),
+            crate::parser::NodeVal::RepititionRange { .. } => todo!(),
         }
     }
 }
