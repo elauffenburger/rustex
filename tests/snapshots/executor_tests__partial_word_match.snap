@@ -1,6 +1,5 @@
 ---
 source: tests/executor_tests.rs
-assertion_line: 26
 expression: result
 ---
 ExecResult {
