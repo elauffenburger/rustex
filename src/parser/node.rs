@@ -108,7 +108,9 @@ impl fmt::Debug for Node {
 
 #[derive(Debug, Clone)]
 pub enum NodeVal {
+    // Poisoned is a special value that represents a NodeVal that has been poisoned.
     Poisoned,
+
     Word(String),
     Any,
     ZeroOrMore(Rc<RefCell<Node>>),

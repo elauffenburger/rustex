@@ -176,7 +176,8 @@ where
         let orig_node = mem::take(node).unwrap();
 
         // Grab the val of the original node.
-        let orig_node_val = mem::replace(&mut orig_node.as_ref().borrow_mut().val, NodeVal::Poisoned);
+        let orig_node_val =
+            mem::replace(&mut orig_node.as_ref().borrow_mut().val, NodeVal::Poisoned);
 
         let res_val = decorator(rcref(Node {
             val: orig_node_val,
@@ -210,7 +211,8 @@ where
 
         let orig_node = mem::take(node).unwrap();
 
-        let orig_node_val = mem::replace(&mut orig_node.as_ref().borrow_mut().val, NodeVal::Poisoned);
+        let orig_node_val =
+            mem::replace(&mut orig_node.as_ref().borrow_mut().val, NodeVal::Poisoned);
 
         let (new_node_val_word, last_ch_as_str) = match orig_node_val {
             NodeVal::Word(word) => {
