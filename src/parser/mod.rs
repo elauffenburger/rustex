@@ -193,7 +193,7 @@ where
         Ok(())
     }
 
-    fn split_word_node_option_and_decorate_last_char<F: FnOnce(Rc<RefCell<Node>>) -> NodeVal>(
+    fn decorate_node_option_for_last_char_modifiers<F: FnOnce(Rc<RefCell<Node>>) -> NodeVal>(
         node: &mut Option<Rc<RefCell<Node>>>,
         decorator: F,
     ) -> Result<(), ParseError> {
@@ -349,7 +349,7 @@ where
                 '*' => {
                     self.next();
 
-                    Self::split_word_node_option_and_decorate_last_char(&mut prev, |old_node| {
+                    Self::decorate_node_option_for_last_char_modifiers(&mut prev, |old_node| {
                         NodeVal::ZeroOrMore(old_node)
                     })?;
 
@@ -358,17 +358,19 @@ where
                 '+' => {
                     self.next();
 
-                    // TODO: only repeat last char in word.
+                    Self::decorate_node_option_for_last_char_modifiers(&mut prev, |old_node| {
+                        NodeVal::OneOrMore(old_node)
+                    })?;
 
-                    Self::decorate_node_option(&mut prev, |old_prev| NodeVal::OneOrMore(old_prev))?;
                     continue;
                 }
                 '?' => {
                     self.next();
 
-                    // TODO: only repeat last char in word.
+                    Self::decorate_node_option_for_last_char_modifiers(&mut prev, |old_node| {
+                        NodeVal::Optional(old_node)
+                    })?;
 
-                    Self::decorate_node_option(&mut prev, |old_prev| NodeVal::Optional(old_prev))?;
                     continue;
                 }
                 '^' => {

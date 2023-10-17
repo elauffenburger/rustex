@@ -2,4 +2,4 @@
 source: tests/parser_tests.rs
 expression: parsed
 ---
-ParseResult { 'fo'->'o'*->'bar'+->('baz')? }
+ParseResult { 'fo'->'o'*->'ba'->'r'+->('baz')?->'q'->'u'?->'x' }

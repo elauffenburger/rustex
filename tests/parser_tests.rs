@@ -84,7 +84,7 @@ fn test_parse_modifiers() {
     let parser = Parser::new();
 
     let parsed = parser
-        .parse_str("foo*bar+(baz)?")
+        .parse_str("foo*bar+(baz)?qu?x")
         .expect("failed to parse");
 
     insta::assert_debug_snapshot!(parsed);
