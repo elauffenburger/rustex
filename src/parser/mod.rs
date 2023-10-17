@@ -1,5 +1,5 @@
 use core::fmt;
-use std::{cell::RefCell, error::Error, iter::Peekable, mem, rc::Rc};
+use std::{cell::RefCell, iter::Peekable, mem, rc::Rc};
 
 mod node;
 pub use node::*;
@@ -176,8 +176,7 @@ where
         let orig_node = mem::take(node).unwrap();
 
         // Grab the val of the original node.
-        let mut orig_node_val = NodeVal::Any;
-        mem::swap(&mut orig_node_val, &mut orig_node.as_ref().borrow_mut().val);
+        let orig_node_val = mem::replace(&mut orig_node.as_ref().borrow_mut().val, NodeVal::Poisoned);
 
         let res_val = decorator(rcref(Node {
             val: orig_node_val,
@@ -211,8 +210,7 @@ where
 
         let orig_node = mem::take(node).unwrap();
 
-        let mut orig_node_val = NodeVal::Any;
-        mem::swap(&mut orig_node.as_ref().borrow_mut().val, &mut orig_node_val);
+        let orig_node_val = mem::replace(&mut orig_node.as_ref().borrow_mut().val, NodeVal::Poisoned);
 
         let (new_node_val_word, last_ch_as_str) = match orig_node_val {
             NodeVal::Word(word) => {

@@ -14,6 +14,7 @@ pub struct Node {
 impl Node {
     fn fmt_internal(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match &self.val {
+            NodeVal::Poisoned => f.write_str("!!poison!!"),
             NodeVal::Word(word) => f.write_fmt(format_args!("'{}'", word)),
             NodeVal::Any => f.write_str("."),
             NodeVal::ZeroOrMore(node) => {
@@ -107,6 +108,7 @@ impl fmt::Debug for Node {
 
 #[derive(Debug, Clone)]
 pub enum NodeVal {
+    Poisoned,
     Word(String),
     Any,
     ZeroOrMore(Rc<RefCell<Node>>),

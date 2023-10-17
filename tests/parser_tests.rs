@@ -1,17 +1,4 @@
-use std::{cell::RefCell, rc::Rc};
-
 use rustex::parser::*;
-
-fn rcref<T>(val: T) -> Rc<RefCell<T>> {
-    Rc::new(RefCell::new(val))
-}
-
-fn node_from_literal_str(val: &str) -> Option<Rc<RefCell<Node>>> {
-    Some(rcref(Node {
-        val: NodeVal::Word(val.to_string()),
-        next: None,
-    }))
-}
 
 #[test]
 fn test_parse_alphanum() {
