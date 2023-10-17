@@ -1,5 +1,5 @@
 use core::fmt;
-use std::{cell::RefCell, iter::Peekable, mem, rc::Rc};
+use std::{cell::RefCell, collections, iter::Peekable, mem, rc::Rc};
 
 mod node;
 pub use node::*;
@@ -342,14 +342,14 @@ where
                     }
 
                     let mut found_end = false;
-                    let mut set = vec![];
+                    let mut set = collections::HashSet::new();
                     while let (Some(ch), escaped) = self.next_escaped()? {
                         if !escaped && ch == ']' {
                             found_end = true;
                             break;
                         }
 
-                        set.push(ch);
+                        set.insert(ch);
                     }
 
                     if !found_end {

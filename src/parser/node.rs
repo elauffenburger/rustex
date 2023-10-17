@@ -1,4 +1,4 @@
-use std::{cell::RefCell, fmt, rc::Rc};
+use std::{cell::RefCell, fmt, rc::Rc, collections};
 
 #[derive(Debug, Clone)]
 pub enum GroupConfig {
@@ -123,7 +123,7 @@ pub enum NodeVal {
         cfg: Option<GroupConfig>,
     },
     Set {
-        set: Vec<char>,
+        set: collections::HashSet<char>,
         inverted: bool,
     },
     Or {
