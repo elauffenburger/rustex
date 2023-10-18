@@ -14,6 +14,12 @@ pub struct ExecResult {
     pub groups: collections::HashMap<String, String>,
 }
 
+impl ExecResult {
+    fn merge(&mut self, other: ExecResult) {
+        self.groups.extend(other.groups);
+    }
+}
+
 pub enum ExecError {
     EmptyParseResult,
     PoisonedNode,
@@ -155,11 +161,29 @@ impl<'input> ExecutorImpl<'input> {
                 }
             }
             crate::parser::NodeVal::Or { left, right } => {
-                if let Some(left_match) = self.exec(res.clone(), Some(left.clone()), cur)? {}
+                let match_result = match self.exec(res.clone(), Some(left.clone()), cur)? {
+                    None => match self.exec(res.clone(), Some(right.clone()), cur)? {
+                        None => None,
+                        res @ Some(_) => res,
+                    },
+                    res @ Some(_) => res,
+                };
 
-                if let Some(right_match) = self.exec(res.clone(), Some(right.clone()), cur)? {}
+                match match_result {
+                    None => Ok(None),
+                    Some(match_result) => {
+                        let new_res = if let Some(mut res) = res {
+                            res.merge(match_result);
 
-                Ok(None)
+                            res
+                        } else {
+                            match_result
+                        };
+
+                        let new_end = new_res.end;
+                        self.exec(Some(new_res), node.next.clone(), cur + new_end)
+                    }
+                }
             }
             crate::parser::NodeVal::RepetitionRange { .. } => todo!(),
         }
