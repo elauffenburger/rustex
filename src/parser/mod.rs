@@ -1,5 +1,5 @@
 use core::fmt;
-use std::{cell::RefCell, collections, iter::Peekable, mem, rc::Rc};
+use std::{cell::RefCell, iter::Peekable, mem, rc::Rc};
 
 mod node;
 pub use node::*;

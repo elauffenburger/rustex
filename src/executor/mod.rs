@@ -18,6 +18,19 @@ impl ExecResult {
     fn merge(&mut self, other: ExecResult) {
         self.groups.extend(other.groups);
     }
+
+    fn map_options(dest: Option<Self>, src: Option<Self>) -> Option<Self> {
+        match (dest, src) {
+            (None, None) => None,
+            (None, src @ Some(_)) => src,
+            (dest @ Some(_), None) => dest,
+            (Some(mut src), Some(dest)) => {
+                src.merge(dest);
+
+                Some(src)
+            }
+        }
+    }
 }
 
 pub enum ExecError {
@@ -84,6 +97,27 @@ impl<'input> ExecutorImpl<'input> {
         }
     }
 
+    fn exec_repeated(
+        &mut self,
+        res: Option<ExecResult>,
+        node: Option<Rc<RefCell<Node>>>,
+        cur: usize,
+    ) -> Result<(Option<ExecResult>, usize, u32), ExecError> {
+        let to_test = node;
+        let mut res = res;
+        let mut cur = cur;
+
+        // Try to exec to_test as many times as we can.
+        let mut num_execs = 0;
+        while let Some(exec_res) = self.exec(res.clone(), to_test.clone(), cur)? {
+            num_execs += 1;
+            cur = exec_res.end + 1;
+            res = ExecResult::map_options(res, Some(exec_res));
+        }
+
+        Ok((res, cur, num_execs))
+    }
+
     fn exec(
         &mut self,
         res: Option<ExecResult>,
@@ -144,8 +178,20 @@ impl<'input> ExecutorImpl<'input> {
                     },
                 }
             }
-            crate::parser::NodeVal::ZeroOrMore(_) => todo!(),
-            crate::parser::NodeVal::OneOrMore(_) => todo!(),
+            crate::parser::NodeVal::ZeroOrMore(to_test) => {
+                let (res, new_cur, _) = self.exec_repeated(res, Some(to_test.clone()), cur)?;
+
+                self.exec(res, node.next.clone(), new_cur)
+            }
+            crate::parser::NodeVal::OneOrMore(to_test) => {
+                let (res, new_cur, num_execs) =
+                    self.exec_repeated(res, Some(to_test.clone()), cur)?;
+                if num_execs == 0 {
+                    return Ok(None);
+                }
+
+                self.exec(res, node.next.clone(), new_cur)
+            }
             crate::parser::NodeVal::Optional(_) => todo!(),
             crate::parser::NodeVal::Group { .. } => todo!(),
             crate::parser::NodeVal::Set { set, inverted } => {

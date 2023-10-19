@@ -33,3 +33,11 @@ fn test_set() {
 
     insta::assert_debug_snapshot!(result);
 }
+
+#[test]
+fn test_repetition() {
+    let result = run_test("fo*b* fo+ bar", "foo fooo bar");
+
+    insta::assert_debug_snapshot!(result);
+}
+
