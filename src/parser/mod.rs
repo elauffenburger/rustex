@@ -295,10 +295,12 @@ where
                     // Parse the repetition range vals.
                     let (min, max) = self.parse_repetition_range_vals()?;
 
-                    Self::decorate_node_option(&mut prev, |old_prev| NodeVal::RepetitionRange {
-                        min,
-                        max,
-                        node: old_prev,
+                    Self::decorate_node_option_for_last_char_modifiers(&mut prev, |old_prev| {
+                        NodeVal::RepetitionRange {
+                            min,
+                            max,
+                            node: old_prev,
+                        }
                     })?;
 
                     continue;

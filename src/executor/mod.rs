@@ -102,7 +102,8 @@ impl<'input> ExecutorImpl<'input> {
         res: Option<ExecResult>,
         node: Option<Rc<RefCell<Node>>>,
         cur: usize,
-    ) -> Result<(Option<ExecResult>, usize, u32), ExecError> {
+        abort_after: Option<u32>,
+    ) -> Result<(Option<ExecResult>, usize, u32, bool), ExecError> {
         let to_test = node;
         let mut res = res;
         let mut cur = cur;
@@ -113,9 +114,16 @@ impl<'input> ExecutorImpl<'input> {
             num_execs += 1;
             cur = exec_res.end + 1;
             res = ExecResult::map_options(res, Some(exec_res));
+
+            // Check if we should abort execution.
+            if let Some(abort_after) = abort_after {
+                if num_execs == abort_after {
+                    return Ok((res, cur, num_execs, true));
+                }
+            }
         }
 
-        Ok((res, cur, num_execs))
+        Ok((res, cur, num_execs, false))
     }
 
     fn exec(
@@ -179,14 +187,28 @@ impl<'input> ExecutorImpl<'input> {
                 }
             }
             crate::parser::NodeVal::ZeroOrMore(to_test) => {
-                let (res, new_cur, _) = self.exec_repeated(res, Some(to_test.clone()), cur)?;
+                let (res, new_cur, _, _) =
+                    self.exec_repeated(res, Some(to_test.clone()), cur, None)?;
 
                 self.exec(res, node.next.clone(), new_cur)
             }
             crate::parser::NodeVal::OneOrMore(to_test) => {
-                let (res, new_cur, num_execs) =
-                    self.exec_repeated(res, Some(to_test.clone()), cur)?;
+                let (res, new_cur, num_execs, _) =
+                    self.exec_repeated(res, Some(to_test.clone()), cur, None)?;
                 if num_execs == 0 {
+                    return Ok(None);
+                }
+
+                self.exec(res, node.next.clone(), new_cur)
+            }
+            crate::parser::NodeVal::RepetitionRange {
+                node: to_test,
+                min,
+                max,
+            } => {
+                let (res, new_cur, num_execs, _) =
+                    self.exec_repeated(res, Some(to_test.clone()), cur, *max)?;
+                if num_execs < *min {
                     return Ok(None);
                 }
 
@@ -231,7 +253,6 @@ impl<'input> ExecutorImpl<'input> {
                     }
                 }
             }
-            crate::parser::NodeVal::RepetitionRange { .. } => todo!(),
         }
     }
 }
