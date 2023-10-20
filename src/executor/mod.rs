@@ -1,9 +1,5 @@
 use core::fmt;
-use std::{
-    cell::RefCell,
-    collections::{self},
-    rc::Rc,
-};
+use std::{cell::RefCell, rc::Rc};
 
 use crate::parser::{Node, ParseResult};
 
@@ -11,10 +7,18 @@ use crate::parser::{Node, ParseResult};
 pub struct ExecResult {
     pub start: usize,
     pub end: usize,
-    pub groups: collections::HashMap<String, (usize, usize)>,
+    pub groups: indexmap::IndexMap<String, (usize, usize)>,
 }
 
 impl ExecResult {
+    pub fn new(start: usize) -> Self {
+        Self {
+            start,
+            end: 0,
+            groups: indexmap::indexmap! {},
+        }
+    }
+
     fn merge(&mut self, other: ExecResult) {
         self.groups.extend(other.groups);
     }
@@ -170,15 +174,9 @@ impl<'input> ExecutorImpl<'input> {
                 match res {
                     None => match self.find_word(word.as_str(), cur, true) {
                         None => Ok(None),
-                        Some((start, end)) => self.exec(
-                            Some(ExecResult {
-                                groups: hashmap! {},
-                                start,
-                                end: 0,
-                            }),
-                            node.next.clone(),
-                            end + 1,
-                        ),
+                        Some((start, end)) => {
+                            self.exec(Some(ExecResult::new(start)), node.next.clone(), end + 1)
+                        }
                     },
                     res @ Some(_) => match self.find_word(word.as_str(), cur, false) {
                         None => Ok(None),
@@ -255,11 +253,7 @@ impl<'input> ExecutorImpl<'input> {
                     (false, true) | (true, false) => {
                         let mut res = res;
                         if let None = res {
-                            res = Some(ExecResult {
-                                start: cur,
-                                end: 0,
-                                groups: hashmap! {},
-                            });
+                            res = Some(ExecResult::new(cur));
                         }
 
                         self.exec(res, node.next.clone(), cur + 1)
