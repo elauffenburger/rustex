@@ -50,24 +50,26 @@ impl Node {
             },
         }))
     }
+}
 
-    fn fmt_internal(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl fmt::Debug for Node {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match &self.val {
             NodeVal::Poisoned => f.write_str("!!poison!!"),
             NodeVal::Word(word) => f.write_fmt(format_args!("'{}'", word)),
             NodeVal::Any => f.write_str("."),
             NodeVal::ZeroOrMore(node) => {
-                node.fmt_internal(f)?;
+                node.fmt(f)?;
                 f.write_str("*")
             }
             NodeVal::OneOrMore(node) => {
-                node.fmt_internal(f)?;
+                node.fmt(f)?;
                 f.write_str("+")
             }
             NodeVal::Start => f.write_str("^"),
             NodeVal::End => f.write_str("$"),
             NodeVal::Optional(node) => {
-                node.fmt_internal(f)?;
+                node.fmt(f)?;
                 f.write_str("?")
             }
             NodeVal::Group { group, cfg } => {
@@ -83,7 +85,7 @@ impl Node {
                     }
                 }
 
-                group.fmt_internal(f)?;
+                group.fmt(f)?;
 
                 f.write_str(")")
             }
@@ -108,13 +110,13 @@ impl Node {
             }
             NodeVal::Or { left, right } => {
                 f.write_str("<")?;
-                left.fmt_internal(f)?;
+                left.fmt(f)?;
                 f.write_str(">|<")?;
-                right.fmt_internal(f)?;
+                right.fmt(f)?;
                 f.write_str(">")
             }
             NodeVal::RepetitionRange { min, max, node } => {
-                node.fmt_internal(f)?;
+                node.fmt(f)?;
 
                 f.write_str("{")?;
                 f.write_fmt(format_args!("{}", min))?;
@@ -133,15 +135,9 @@ impl Node {
             None => Ok(()),
             Some(node) => {
                 f.write_str("->")?;
-                node.fmt_internal(f)
+                node.fmt(f)
             }
         }
-    }
-}
-
-impl fmt::Debug for Node {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.fmt_internal(f)
     }
 }
 
