@@ -2,10 +2,19 @@ use core::fmt;
 use std::{cell::RefCell, iter::Peekable, mem, rc::Rc};
 
 mod node;
+mod parse_node;
+
 pub use node::*;
+use parse_node::*;
 
 fn rcref<T>(val: T) -> Rc<RefCell<T>> {
     Rc::new(RefCell::new(val))
+}
+
+#[derive(Debug, Clone)]
+pub enum GroupConfig {
+    NonCapturing,
+    Named(String),
 }
 
 pub enum ParseError {
@@ -17,7 +26,8 @@ pub enum ParseError {
     BadGroupConfig,
     UnexpectedRepetitionRangeCh(char),
     MissingLeftSideOfModifier,
-    UnexpectedEmptyNodeOption,
+    UnexpectedEmptyParseNodeOption,
+    ParseGraphCycle,
 }
 
 impl fmt::Debug for ParseError {
@@ -35,9 +45,10 @@ impl fmt::Debug for ParseError {
                 f.write_fmt(format_args!("unexpected char '{}' in repetition range", ch))
             }
             ParseError::MissingLeftSideOfModifier => f.write_str("missing left side of modifier"),
-            ParseError::UnexpectedEmptyNodeOption => {
-                f.write_str("internal: unexpected unwrap of Option<Rc<RefCell<Node>>>")
+            ParseError::UnexpectedEmptyParseNodeOption => {
+                f.write_str("internal: unexpected unwrap of Option<Rc<RefCell<ParseNode>>>")
             }
+            Self::ParseGraphCycle => write!(f, "found reference cycle in parse graph"),
         }
     }
 }
@@ -77,7 +88,7 @@ where
         '(', ')', '{', '}', '[', ']', '|', '\\', '^', '$', '.', '*', '?', '+',
     ];
 
-    fn parse_group(&mut self) -> Result<NodeVal, ParseError> {
+    fn parse_group(&mut self) -> Result<ParseNodeVal, ParseError> {
         self.next();
 
         let group_config = match self.peek() {
@@ -110,7 +121,7 @@ where
 
         self.next();
 
-        Ok(NodeVal::Group {
+        Ok(ParseNodeVal::Group {
             group,
             cfg: group_config,
         })
@@ -159,7 +170,7 @@ where
         Ok((min, max))
     }
 
-    fn parse_word(&mut self) -> Result<NodeVal, ParseError> {
+    fn parse_word(&mut self) -> Result<ParseNodeVal, ParseError> {
         let mut word = String::new();
         while let Some(ch) = self.iter.peek() {
             if Self::is_special_char(ch) && *ch != '\\' {
@@ -174,29 +185,31 @@ where
             word.push(ch);
         }
 
-        Ok(NodeVal::Word(word))
+        Ok(ParseNodeVal::Word(word))
     }
 
     fn is_special_char(ch: &char) -> bool {
         Self::SPECIAL_CHARS.contains(ch)
     }
 
-    fn decorate_node_option<F: FnOnce(Rc<RefCell<Node>>) -> NodeVal>(
-        node: &mut Option<Rc<RefCell<Node>>>,
+    fn decorate_node_option<F: FnOnce(Rc<RefCell<ParseNode>>) -> ParseNodeVal>(
+        node: &mut Option<Rc<RefCell<ParseNode>>>,
         decorator: F,
     ) -> Result<(), ParseError> {
         if node.is_none() {
-            return Err(ParseError::UnexpectedEmptyNodeOption);
+            return Err(ParseError::UnexpectedEmptyParseNodeOption);
         }
 
         // Grab the node.
         let orig_node = mem::take(node).unwrap();
 
         // Grab the val of the original node.
-        let orig_node_val =
-            mem::replace(&mut orig_node.as_ref().borrow_mut().val, NodeVal::Poisoned);
+        let orig_node_val = mem::replace(
+            &mut orig_node.as_ref().borrow_mut().val,
+            ParseNodeVal::Poisoned,
+        );
 
-        let res_val = decorator(rcref(Node {
+        let res_val = decorator(rcref(ParseNode {
             val: orig_node_val,
             next: None,
         }));
@@ -210,13 +223,15 @@ where
         Ok(())
     }
 
-    fn decorate_node_option_for_last_char_modifiers<F: FnOnce(Rc<RefCell<Node>>) -> NodeVal>(
-        node: &mut Option<Rc<RefCell<Node>>>,
+    fn decorate_node_option_for_last_char_modifiers<
+        F: FnOnce(Rc<RefCell<ParseNode>>) -> ParseNodeVal,
+    >(
+        node: &mut Option<Rc<RefCell<ParseNode>>>,
         decorator: F,
     ) -> Result<(), ParseError> {
         let take_last_ch = match node {
             Some(node) => match node.as_ref().borrow().val {
-                NodeVal::Word(ref word) => word.len() > 1,
+                ParseNodeVal::Word(ref word) => word.len() > 1,
                 _ => false,
             },
             None => return Err(ParseError::MissingLeftSideOfModifier),
@@ -228,11 +243,13 @@ where
 
         let orig_node = mem::take(node).unwrap();
 
-        let orig_node_val =
-            mem::replace(&mut orig_node.as_ref().borrow_mut().val, NodeVal::Poisoned);
+        let orig_node_val = mem::replace(
+            &mut orig_node.as_ref().borrow_mut().val,
+            ParseNodeVal::Poisoned,
+        );
 
         let (new_node_val_word, last_ch_as_str) = match orig_node_val {
-            NodeVal::Word(word) => {
+            ParseNodeVal::Word(word) => {
                 let mut new_node_val_word = String::new();
                 let mut last_ch_as_str = None;
                 let mut iter = word.chars().peekable();
@@ -251,12 +268,12 @@ where
                     last_ch_as_str.expect("should have found a last char in word"),
                 )
             }
-            _ => unreachable!("already confirmed the value is a NodeVal::Word"),
+            _ => unreachable!("already confirmed the value is a ParseNodeVal::Word"),
         };
 
-        let new_next = rcref(Node {
-            val: decorator(rcref(Node {
-                val: NodeVal::Word(last_ch_as_str),
+        let new_next = rcref(ParseNode {
+            val: decorator(rcref(ParseNode {
+                val: ParseNodeVal::Word(last_ch_as_str),
                 next: None,
             })),
             next: None,
@@ -264,7 +281,7 @@ where
 
         // Swap in the new node value and node.next (which will be swapped into the node addr).
         let mut orig_node_mut = orig_node.as_ref().borrow_mut();
-        orig_node_mut.val = NodeVal::Word(new_node_val_word);
+        orig_node_mut.val = ParseNodeVal::Word(new_node_val_word);
         orig_node_mut.next = Some(new_next.clone());
 
         // Swap in the new node.
@@ -276,9 +293,9 @@ where
     fn parse(
         self: &mut Self,
         until: Option<char>,
-    ) -> Result<Option<Rc<RefCell<Node>>>, ParseError> {
+    ) -> Result<Option<Rc<RefCell<ParseNode>>>, ParseError> {
         let mut head = None;
-        let mut prev: Option<Rc<RefCell<Node>>> = None;
+        let mut prev: Option<Rc<RefCell<ParseNode>>> = None;
 
         while let Some(ch) = self.peek() {
             match until {
@@ -296,7 +313,7 @@ where
                     let (min, max) = self.parse_repetition_range_vals()?;
 
                     Self::decorate_node_option_for_last_char_modifiers(&mut prev, |old_prev| {
-                        NodeVal::RepetitionRange {
+                        ParseNodeVal::RepetitionRange {
                             min,
                             max,
                             node: old_prev,
@@ -318,12 +335,12 @@ where
                     };
 
                     // Construct the result.
-                    let res_val = NodeVal::Or {
+                    let res_val = ParseNodeVal::Or {
                         left: left.unwrap(),
                         right,
                     };
 
-                    let new_head = rcref(Node {
+                    let new_head = rcref(ParseNode {
                         val: res_val.clone(),
                         next: None,
                     });
@@ -358,18 +375,18 @@ where
                         return Err(ParseError::UnterminatedCharSet);
                     }
 
-                    NodeVal::Set { set, inverted }
+                    ParseNodeVal::Set { set, inverted }
                 }
                 '.' => {
                     self.next();
 
-                    NodeVal::Any
+                    ParseNodeVal::Any
                 }
                 '*' => {
                     self.next();
 
                     Self::decorate_node_option_for_last_char_modifiers(&mut prev, |old_node| {
-                        NodeVal::ZeroOrMore(old_node)
+                        ParseNodeVal::ZeroOrMore(old_node)
                     })?;
 
                     continue;
@@ -378,7 +395,7 @@ where
                     self.next();
 
                     Self::decorate_node_option_for_last_char_modifiers(&mut prev, |old_node| {
-                        NodeVal::OneOrMore(old_node)
+                        ParseNodeVal::OneOrMore(old_node)
                     })?;
 
                     continue;
@@ -387,7 +404,7 @@ where
                     self.next();
 
                     Self::decorate_node_option_for_last_char_modifiers(&mut prev, |old_node| {
-                        NodeVal::Optional(old_node)
+                        ParseNodeVal::Optional(old_node)
                     })?;
 
                     continue;
@@ -395,18 +412,18 @@ where
                 '^' => {
                     self.next();
 
-                    NodeVal::Start
+                    ParseNodeVal::Start
                 }
                 '$' => {
                     self.next();
 
-                    NodeVal::End
+                    ParseNodeVal::End
                 }
                 '(' => self.parse_group()?,
                 _ => self.parse_word()?,
             };
 
-            let new_node = rcref(Node {
+            let new_node = rcref(ParseNode {
                 val: new_node_val,
                 next: None,
             });
@@ -473,18 +490,24 @@ impl Parser {
         };
 
         Ok(ParseResult {
-            head: parser.parse(None).map_err(|err| ParseErrorWithContext {
-                err,
-                str: input,
-                cur: parser.index,
-            })?,
+            head: parser
+                .parse(None)
+                .and_then(|head| match head {
+                    None => Ok(None),
+                    Some(head) => Ok(Some(Node::from_parsed(head)?)),
+                })
+                .map_err(|err| ParseErrorWithContext {
+                    err,
+                    str: input,
+                    cur: parser.index,
+                })?,
         })
     }
 }
 
 #[derive(Default)]
 pub struct ParseResult {
-    pub head: Option<Rc<RefCell<Node>>>,
+    pub head: Option<Box<Node>>,
 }
 
 impl fmt::Debug for ParseResult {
@@ -493,7 +516,7 @@ impl fmt::Debug for ParseResult {
         match &self.head {
             None => {}
             Some(head) => {
-                head.as_ref().borrow().fmt(f)?;
+                head.fmt(f)?;
             }
         }
         f.write_str(" }")

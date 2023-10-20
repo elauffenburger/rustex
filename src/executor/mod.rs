@@ -1,9 +1,6 @@
 use core::fmt;
 
-use crate::parser::ParseResult;
-
-mod node;
-use node::*;
+use crate::parser;
 
 #[derive(Debug, Clone)]
 pub struct ExecResult {
@@ -42,7 +39,6 @@ impl ExecResult {
 pub enum ExecError {
     EmptyParseResult,
     PoisonedNode,
-    ParseGraphCycle,
 }
 
 impl fmt::Debug for ExecError {
@@ -50,7 +46,6 @@ impl fmt::Debug for ExecError {
         match self {
             Self::EmptyParseResult => write!(f, "cannot execute empty parse result"),
             Self::PoisonedNode => write!(f, "internal: encountered poisoned node"),
-            Self::ParseGraphCycle => write!(f, "found reference cycle in parse graph"),
         }
     }
 }
@@ -64,7 +59,7 @@ impl Executor {
 
     pub fn exec(
         &mut self,
-        parsed: ParseResult,
+        parsed: parser::ParseResult,
         input: &str,
     ) -> Result<Option<ExecResult>, ExecError> {
         let mut executor = ExecutorImpl {
@@ -72,10 +67,7 @@ impl Executor {
             n: input.len(),
         };
 
-        match parsed.head {
-            None => Ok(None),
-            Some(head) => executor.exec(None, Some(&ExecNode::from_parsed(head)?), 0),
-        }
+        executor.exec(None, parsed.head.as_ref(), 0)
     }
 }
 
@@ -111,7 +103,7 @@ impl<'input> ExecutorImpl<'input> {
     fn exec_repeated(
         &mut self,
         res: Option<ExecResult>,
-        node: Option<&Box<ExecNode>>,
+        node: Option<&Box<parser::Node>>,
         cur: usize,
         abort_after: Option<u32>,
     ) -> Result<(Option<ExecResult>, usize, u32, bool), ExecError> {
@@ -140,7 +132,7 @@ impl<'input> ExecutorImpl<'input> {
     fn exec(
         &mut self,
         res: Option<ExecResult>,
-        node: Option<&Box<ExecNode>>,
+        node: Option<&Box<parser::Node>>,
         cur: usize,
     ) -> Result<Option<ExecResult>, ExecError> {
         let node = match node {
@@ -156,23 +148,23 @@ impl<'input> ExecutorImpl<'input> {
         };
 
         match &node.val {
-            ExecNodeVal::Poisoned => Err(ExecError::PoisonedNode),
-            ExecNodeVal::Any => self.exec(res, node.next.as_ref(), cur + 1),
-            ExecNodeVal::Start => {
+            parser::NodeVal::Poisoned => Err(ExecError::PoisonedNode),
+            parser::NodeVal::Any => self.exec(res, node.next.as_ref(), cur + 1),
+            parser::NodeVal::Start => {
                 if cur == 0 {
                     self.exec(res, node.next.as_ref(), cur)
                 } else {
                     Ok(None)
                 }
             }
-            ExecNodeVal::End => {
+            parser::NodeVal::End => {
                 if cur == self.n {
                     self.exec(res, node.next.as_ref(), cur)
                 } else {
                     Ok(None)
                 }
             }
-            ExecNodeVal::Word(word) => {
+            parser::NodeVal::Word(word) => {
                 if cur >= self.n {
                     return Ok(None);
                 }
@@ -190,12 +182,12 @@ impl<'input> ExecutorImpl<'input> {
                     },
                 }
             }
-            ExecNodeVal::ZeroOrMore(to_test) => {
+            parser::NodeVal::ZeroOrMore(to_test) => {
                 let (res, new_cur, _, _) = self.exec_repeated(res, Some(to_test), cur, None)?;
 
                 self.exec(res, node.next.as_ref(), new_cur)
             }
-            ExecNodeVal::OneOrMore(to_test) => {
+            parser::NodeVal::OneOrMore(to_test) => {
                 let (res, new_cur, num_execs, _) =
                     self.exec_repeated(res, Some(to_test), cur, None)?;
                 if num_execs == 0 {
@@ -204,7 +196,7 @@ impl<'input> ExecutorImpl<'input> {
 
                 self.exec(res, node.next.as_ref(), new_cur)
             }
-            ExecNodeVal::RepetitionRange {
+            parser::NodeVal::RepetitionRange {
                 node: to_test,
                 min,
                 max,
@@ -217,13 +209,13 @@ impl<'input> ExecutorImpl<'input> {
 
                 self.exec(res, node.next.as_ref(), new_cur)
             }
-            ExecNodeVal::Optional(to_test) => {
+            parser::NodeVal::Optional(to_test) => {
                 // Attempt to match at most one time, but continue on if we didn't match.
                 let (res, new_cur, _, _) = self.exec_repeated(res, Some(to_test), cur, Some(1))?;
 
                 self.exec(res, node.next.as_ref(), new_cur)
             }
-            ExecNodeVal::Group {
+            parser::NodeVal::Group {
                 group,
                 cfg: group_cfg,
             } => match self.exec(res.clone(), Some(group), cur)? {
@@ -246,7 +238,7 @@ impl<'input> ExecutorImpl<'input> {
                     self.exec(res, node.next.as_ref(), new_cur + 1)
                 }
             },
-            ExecNodeVal::Set { set, inverted } => {
+            parser::NodeVal::Set { set, inverted } => {
                 let ch = match self.input.chars().nth(cur) {
                     None => todo!(),
                     Some(ch) => ch,
@@ -265,7 +257,7 @@ impl<'input> ExecutorImpl<'input> {
                     _ => Ok(None),
                 }
             }
-            ExecNodeVal::Or { left, right } => {
+            parser::NodeVal::Or { left, right } => {
                 let match_result = match self.exec(res.clone(), Some(left), cur)? {
                     None => match self.exec(res.clone(), Some(right), cur)? {
                         None => None,
