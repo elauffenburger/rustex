@@ -43,17 +43,17 @@ fn test_repetition_range() {
 
 #[test]
 fn test_repetition() {
-    let result = run_test("fo*b* fo+ ba{1,3}r{2}", "foo fooo baarr");
+    let result = run_test("fo*b* fo+b? ba{1,3}r{2}", "foo fooo baarr");
 
     insta::assert_debug_snapshot!(result);
 }
 
-// #[test]
-// fn test_groups() {
-//     let result = run_test("(<one>[^ ]+) (?:world) (<two>foo)", "hello world foo bar");
+#[test]
+fn test_groups() {
+    let result = run_test("(?<one>hello) (?:world) (?<two>foo)", "hello world foo bar");
 
-//     insta::assert_debug_snapshot!(result);
-// }
+    insta::assert_debug_snapshot!(result);
+}
 
 // #[test]
 // fn test_ps() {

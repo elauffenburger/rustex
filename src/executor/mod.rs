@@ -11,7 +11,7 @@ use crate::parser::{Node, ParseResult};
 pub struct ExecResult {
     pub start: usize,
     pub end: usize,
-    pub groups: collections::HashMap<String, String>,
+    pub groups: collections::HashMap<String, (usize, usize)>,
 }
 
 impl ExecResult {
@@ -214,8 +214,36 @@ impl<'input> ExecutorImpl<'input> {
 
                 self.exec(res, node.next.clone(), new_cur)
             }
-            crate::parser::NodeVal::Optional(_) => todo!(),
-            crate::parser::NodeVal::Group { .. } => todo!(),
+            crate::parser::NodeVal::Optional(to_test) => {
+                // Attempt to match at most one time, but continue on if we didn't match.
+                let (res, new_cur, _, _) =
+                    self.exec_repeated(res, Some(to_test.clone()), cur, Some(1))?;
+
+                self.exec(res, node.next.clone(), new_cur)
+            }
+            crate::parser::NodeVal::Group {
+                group,
+                cfg: group_cfg,
+            } => match self.exec(res.clone(), Some(group.clone()), cur)? {
+                None => return Ok(None),
+                Some(exec_res) => {
+                    let new_cur = exec_res.end;
+                    let mut res = ExecResult::map_options(res, Some(exec_res));
+
+                    // Record this group if needed.
+                    match (&mut res, group_cfg) {
+                        (Some(res), Some(group_cfg)) => match group_cfg {
+                            crate::parser::GroupConfig::NonCapturing => {}
+                            crate::parser::GroupConfig::Named(name) => {
+                                res.groups.insert(name.clone(), (cur, new_cur));
+                            }
+                        },
+                        _ => {}
+                    }
+
+                    self.exec(res, node.next.clone(), new_cur + 1)
+                }
+            },
             crate::parser::NodeVal::Set { set, inverted } => {
                 let ch = match self.input.chars().nth(cur) {
                     None => todo!(),

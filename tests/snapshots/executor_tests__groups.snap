@@ -1,0 +1,18 @@
+---
+source: tests/executor_tests.rs
+expression: result
+---
+ExecResult {
+    start: 0,
+    end: 14,
+    groups: {
+        "one": (
+            0,
+            4,
+        ),
+        "two": (
+            12,
+            14,
+        ),
+    },
+}
