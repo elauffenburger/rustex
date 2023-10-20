@@ -252,7 +252,18 @@ impl<'input> ExecutorImpl<'input> {
 
                 match (inverted, set.contains(&ch)) {
                     // not inverted, did find:
-                    (false, true) | (true, false) => self.exec(res, node.next.clone(), cur + 1),
+                    (false, true) | (true, false) => {
+                        let mut res = res;
+                        if let None = res {
+                            res = Some(ExecResult {
+                                start: cur,
+                                end: 0,
+                                groups: hashmap! {},
+                            });
+                        }
+
+                        self.exec(res, node.next.clone(), cur + 1)
+                    }
                     _ => Ok(None),
                 }
             }
