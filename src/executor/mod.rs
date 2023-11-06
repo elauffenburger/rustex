@@ -1,4 +1,5 @@
 use core::fmt;
+use std::rc::Rc;
 
 use crate::parser::{self, Node, NodeVal};
 
@@ -67,7 +68,8 @@ impl Executor {
             n: input.len(),
         };
 
-        executor.exec(None, parsed.head.as_ref(), None, 0)
+        let head: Option<Rc<Node>> = parsed.head.map(|head| Rc::from(head));
+        executor.exec(None, head.as_ref(), None, 0)
     }
 }
 
@@ -77,7 +79,7 @@ struct ExecutorImpl<'input> {
 }
 
 impl<'input> ExecutorImpl<'input> {
-    fn next(node: Option<&Box<Node>>) -> Option<&Box<Node>> {
+    fn next(node: Option<&Rc<Node>>) -> Option<&Rc<Node>> {
         match node {
             None => None,
             Some(node) => match &node.as_ref().next {
@@ -113,11 +115,11 @@ impl<'input> ExecutorImpl<'input> {
     fn exec_repeated(
         &mut self,
         res: Option<ExecResult>,
-        node: Option<&Box<Node>>,
-        in_group: Option<&Box<Node>>,
+        node: Option<&Rc<Node>>,
+        in_group: Option<&Rc<Node>>,
         cur: usize,
         abort_after: Option<u32>,
-        abort_if_match: Option<&Box<Node>>,
+        abort_if_match: Option<&Rc<Node>>,
     ) -> Result<(Option<ExecResult>, usize, u32, bool), ExecError> {
         let to_test = node;
         let mut res = res;
@@ -143,7 +145,7 @@ impl<'input> ExecutorImpl<'input> {
                     res.clone(),
                     abort_if_match
                         .map(|node| {
-                            Box::new(Node {
+                            Rc::new(Node {
                                 val: node.val.clone(),
                                 next: None,
                             })
@@ -163,8 +165,8 @@ impl<'input> ExecutorImpl<'input> {
     fn exec(
         &mut self,
         res: Option<ExecResult>,
-        node: Option<&Box<Node>>,
-        in_group: Option<&Box<Node>>,
+        node: Option<&Rc<Node>>,
+        in_group: Option<&Rc<Node>>,
         cur: usize,
     ) -> Result<Option<ExecResult>, ExecError> {
         let node = match node {

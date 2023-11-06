@@ -4,24 +4,14 @@ use indexmap::IndexSet;
 
 use super::parse_node::*;
 
+#[derive(Clone)]
 pub struct Node {
     pub val: NodeVal,
-    pub next: Option<Box<Node>>,
-}
-
-impl Clone for Node {
-    fn clone(&self) -> Self {
-        Self {
-            val: self.val.clone(),
-            next: self.next.clone(),
-        }
-    }
+    pub next: Option<Rc<Node>>,
 }
 
 impl Node {
-    pub fn from_parsed(
-        parsed_node: Rc<RefCell<ParseNode>>,
-    ) -> Result<Box<Self>, super::ParseError> {
+    pub fn from_parsed(parsed_node: Rc<RefCell<ParseNode>>) -> Result<Rc<Self>, super::ParseError> {
         let parsed_node = Rc::try_unwrap(parsed_node)
             .map_err(|_| super::ParseError::ParseGraphCycle)?
             .into_inner();
@@ -57,7 +47,7 @@ impl Node {
             },
         };
 
-        Ok(Box::new(Node {
+        Ok(Rc::new(Node {
             val,
             next: match parsed_node.next {
                 None => None,
@@ -166,7 +156,7 @@ impl fmt::Debug for Node {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum NodeVal {
     // Poisoned is a special value that represents a NodeVal that has been poisoned.
     Poisoned,
@@ -174,18 +164,18 @@ pub enum NodeVal {
     Word(String),
     Any,
     ZeroOrMore {
-        node: Box<Node>,
+        node: Rc<Node>,
         greedy: bool,
     },
     OneOrMore {
-        node: Box<Node>,
+        node: Rc<Node>,
         greedy: bool,
     },
     Start,
     End,
-    Optional(Box<Node>),
+    Optional(Rc<Node>),
     Group {
-        group: Box<Node>,
+        group: Rc<Node>,
         cfg: Option<super::GroupConfig>,
     },
     Set {
@@ -193,50 +183,12 @@ pub enum NodeVal {
         inverted: bool,
     },
     Or {
-        left: Box<Node>,
-        right: Box<Node>,
+        left: Rc<Node>,
+        right: Rc<Node>,
     },
     RepetitionRange {
         min: u32,
         max: Option<u32>,
-        node: Box<Node>,
+        node: Rc<Node>,
     },
-}
-
-impl Clone for NodeVal {
-    fn clone(&self) -> Self {
-        match self {
-            Self::Poisoned => Self::Poisoned,
-            Self::Word(word) => Self::Word(word.clone()),
-            Self::Any => Self::Any,
-            Self::ZeroOrMore { node, greedy } => Self::ZeroOrMore {
-                node: node.clone(),
-                greedy: *greedy,
-            },
-            Self::OneOrMore { node, greedy } => Self::OneOrMore {
-                node: node.clone(),
-                greedy: *greedy,
-            },
-            Self::Start => Self::Start,
-            Self::End => Self::End,
-            Self::Optional(node) => Self::Optional(node.clone()),
-            Self::Group { group, cfg } => Self::Group {
-                group: group.clone(),
-                cfg: cfg.clone(),
-            },
-            Self::Set { set, inverted } => Self::Set {
-                set: set.clone(),
-                inverted: *inverted,
-            },
-            Self::Or { left, right } => Self::Or {
-                left: left.clone(),
-                right: right.clone(),
-            },
-            Self::RepetitionRange { min, max, node } => Self::RepetitionRange {
-                min: *min,
-                max: *max,
-                node: node.clone(),
-            },
-        }
-    }
 }

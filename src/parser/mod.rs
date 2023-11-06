@@ -526,7 +526,7 @@ impl Parser {
 
 #[derive(Default)]
 pub struct ParseResult {
-    pub head: Option<Box<Node>>,
+    pub head: Option<Rc<Node>>,
 }
 
 impl fmt::Debug for ParseResult {
