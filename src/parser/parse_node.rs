@@ -14,8 +14,14 @@ pub enum ParseNodeVal {
 
     Word(String),
     Any,
-    ZeroOrMore(Rc<RefCell<ParseNode>>),
-    OneOrMore(Rc<RefCell<ParseNode>>),
+    ZeroOrMore {
+        node: Rc<RefCell<ParseNode>>,
+        greedy: bool,
+    },
+    OneOrMore {
+        node: Rc<RefCell<ParseNode>>,
+        greedy: bool,
+    },
     Start,
     End,
     Optional(Rc<RefCell<ParseNode>>),

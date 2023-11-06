@@ -290,6 +290,17 @@ where
         Ok(())
     }
 
+    fn chomp_greediness(&mut self) -> bool {
+        if let Some(ch) = self.peek() {
+            if *ch == '?' {
+                self.next();
+                return false;
+            }
+        };
+
+        return true;
+    }
+
     fn parse(
         self: &mut Self,
         until: Option<char>,
@@ -385,8 +396,12 @@ where
                 '*' => {
                     self.next();
 
+                    let greedy = self.chomp_greediness();
                     Self::decorate_node_option_for_last_char_modifiers(&mut prev, |old_node| {
-                        ParseNodeVal::ZeroOrMore(old_node)
+                        ParseNodeVal::ZeroOrMore {
+                            node: old_node,
+                            greedy,
+                        }
                     })?;
 
                     continue;
@@ -394,8 +409,12 @@ where
                 '+' => {
                     self.next();
 
+                    let greedy = self.chomp_greediness();
                     Self::decorate_node_option_for_last_char_modifiers(&mut prev, |old_node| {
-                        ParseNodeVal::OneOrMore(old_node)
+                        ParseNodeVal::OneOrMore {
+                            node: old_node,
+                            greedy,
+                        }
                     })?;
 
                     continue;

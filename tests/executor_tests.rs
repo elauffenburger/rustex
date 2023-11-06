@@ -50,7 +50,17 @@ fn test_repetition() {
 
 #[test]
 fn test_groups() {
-    let result = run_test("(?<one>[^ ]+) (?:world) (?<two>foo)", "hello world foo bar");
+    let result = run_test(
+        "(?<one>[^ ]+) (?:world) (?<two>foo) ",
+        "hello world foo bar baz",
+    );
+
+    insta::assert_debug_snapshot!(result);
+}
+
+#[test]
+fn test_lazy_match() {
+    let result = run_test("(?<one>.*?) (?<two>.*?) (?<three>.+?)", "f bar baz");
 
     insta::assert_debug_snapshot!(result);
 }

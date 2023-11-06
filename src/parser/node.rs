@@ -9,6 +9,15 @@ pub struct Node {
     pub next: Option<Box<Node>>,
 }
 
+impl Clone for Node {
+    fn clone(&self) -> Self {
+        Self {
+            val: self.val.clone(),
+            next: self.next.clone(),
+        }
+    }
+}
+
 impl Node {
     pub fn from_parsed(
         parsed_node: Rc<RefCell<ParseNode>>,
@@ -21,8 +30,14 @@ impl Node {
             ParseNodeVal::Poisoned => NodeVal::Poisoned,
             ParseNodeVal::Word(word) => NodeVal::Word(word),
             ParseNodeVal::Any => NodeVal::Any,
-            ParseNodeVal::ZeroOrMore(node) => NodeVal::ZeroOrMore(Self::from_parsed(node)?),
-            ParseNodeVal::OneOrMore(node) => NodeVal::OneOrMore(Self::from_parsed(node)?),
+            ParseNodeVal::ZeroOrMore { node, greedy } => NodeVal::ZeroOrMore {
+                node: Self::from_parsed(node)?,
+                greedy,
+            },
+            ParseNodeVal::OneOrMore { node, greedy } => NodeVal::OneOrMore {
+                node: Self::from_parsed(node)?,
+                greedy,
+            },
             ParseNodeVal::Start => NodeVal::Start,
             ParseNodeVal::End => NodeVal::End,
             ParseNodeVal::Optional(node) => NodeVal::Optional(Self::from_parsed(node)?),
@@ -58,13 +73,23 @@ impl fmt::Debug for Node {
             NodeVal::Poisoned => f.write_str("!!poison!!"),
             NodeVal::Word(word) => f.write_fmt(format_args!("'{}'", word)),
             NodeVal::Any => f.write_str("."),
-            NodeVal::ZeroOrMore(node) => {
+            NodeVal::ZeroOrMore { node, greedy } => {
                 node.fmt(f)?;
-                f.write_str("*")
+                f.write_str("*")?;
+                if !greedy {
+                    f.write_str("?")?;
+                }
+
+                Ok(())
             }
-            NodeVal::OneOrMore(node) => {
+            NodeVal::OneOrMore { node, greedy } => {
                 node.fmt(f)?;
-                f.write_str("+")
+                f.write_str("+")?;
+                if !greedy {
+                    f.write_str("?")?;
+                }
+
+                Ok(())
             }
             NodeVal::Start => f.write_str("^"),
             NodeVal::End => f.write_str("$"),
@@ -148,8 +173,14 @@ pub enum NodeVal {
 
     Word(String),
     Any,
-    ZeroOrMore(Box<Node>),
-    OneOrMore(Box<Node>),
+    ZeroOrMore {
+        node: Box<Node>,
+        greedy: bool,
+    },
+    OneOrMore {
+        node: Box<Node>,
+        greedy: bool,
+    },
     Start,
     End,
     Optional(Box<Node>),
@@ -170,4 +201,42 @@ pub enum NodeVal {
         max: Option<u32>,
         node: Box<Node>,
     },
+}
+
+impl Clone for NodeVal {
+    fn clone(&self) -> Self {
+        match self {
+            Self::Poisoned => Self::Poisoned,
+            Self::Word(word) => Self::Word(word.clone()),
+            Self::Any => Self::Any,
+            Self::ZeroOrMore { node, greedy } => Self::ZeroOrMore {
+                node: node.clone(),
+                greedy: *greedy,
+            },
+            Self::OneOrMore { node, greedy } => Self::OneOrMore {
+                node: node.clone(),
+                greedy: *greedy,
+            },
+            Self::Start => Self::Start,
+            Self::End => Self::End,
+            Self::Optional(node) => Self::Optional(node.clone()),
+            Self::Group { group, cfg } => Self::Group {
+                group: group.clone(),
+                cfg: cfg.clone(),
+            },
+            Self::Set { set, inverted } => Self::Set {
+                set: set.clone(),
+                inverted: *inverted,
+            },
+            Self::Or { left, right } => Self::Or {
+                left: left.clone(),
+                right: right.clone(),
+            },
+            Self::RepetitionRange { min, max, node } => Self::RepetitionRange {
+                min: *min,
+                max: *max,
+                node: node.clone(),
+            },
+        }
+    }
 }

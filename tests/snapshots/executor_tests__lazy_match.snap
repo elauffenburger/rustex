@@ -4,15 +4,19 @@ expression: result
 ---
 ExecResult {
     start: 0,
-    end: 15,
+    end: 8,
     groups: {
         "one": (
             0,
-            4,
+            0,
         ),
         "two": (
-            12,
-            14,
+            2,
+            4,
+        ),
+        "three": (
+            6,
+            8,
         ),
     },
 }
