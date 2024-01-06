@@ -7,3 +7,6 @@ ExecResult {
     end: 6,
     groups: {},
 }
+p: 'bar'
+i: 'foo bar baz'
+        ^ ^

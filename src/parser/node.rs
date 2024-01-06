@@ -4,56 +4,64 @@ use indexmap::IndexSet;
 
 use super::parse_node::*;
 
+fn try_unwrap_rc_refcell_parsenode(
+    parsed_node: Rc<RefCell<ParseNode>>,
+) -> Result<ParseNode, super::ParseError> {
+    Rc::try_unwrap(parsed_node)
+        .map_err(|_| super::ParseError::ParseGraphCycle)
+        .map(|refcell| refcell.into_inner())
+}
+
 #[derive(Clone)]
 pub struct Node {
     pub val: NodeVal,
     pub next: Option<Rc<Node>>,
 }
 
-impl Node {
-    pub fn from_parsed(parsed_node: Rc<RefCell<ParseNode>>) -> Result<Rc<Self>, super::ParseError> {
-        let parsed_node = Rc::try_unwrap(parsed_node)
-            .map_err(|_| super::ParseError::ParseGraphCycle)?
-            .into_inner();
+impl TryFrom<ParseNode> for Node {
+    type Error = super::ParseError;
 
+    fn try_from(parsed_node: ParseNode) -> Result<Self, Self::Error> {
         let val = match parsed_node.val {
             ParseNodeVal::Poisoned => NodeVal::Poisoned,
             ParseNodeVal::Word(word) => NodeVal::Word(word),
             ParseNodeVal::Any => NodeVal::Any,
             ParseNodeVal::ZeroOrMore { node, greedy } => NodeVal::ZeroOrMore {
-                node: Self::from_parsed(node)?,
+                node: Rc::new(try_unwrap_rc_refcell_parsenode(node)?.try_into()?),
                 greedy,
             },
             ParseNodeVal::OneOrMore { node, greedy } => NodeVal::OneOrMore {
-                node: Self::from_parsed(node)?,
+                node: Rc::new(try_unwrap_rc_refcell_parsenode(node)?.try_into()?),
                 greedy,
             },
             ParseNodeVal::Start => NodeVal::Start,
             ParseNodeVal::End => NodeVal::End,
-            ParseNodeVal::Optional(node) => NodeVal::Optional(Self::from_parsed(node)?),
+            ParseNodeVal::Optional(node) => {
+                NodeVal::Optional(Rc::new(try_unwrap_rc_refcell_parsenode(node)?.try_into()?))
+            }
             ParseNodeVal::Group { group, cfg } => NodeVal::Group {
-                group: Self::from_parsed(group)?,
+                group: Rc::new(try_unwrap_rc_refcell_parsenode(group)?.try_into()?),
                 cfg,
             },
             ParseNodeVal::Set { set, inverted } => NodeVal::Set { set, inverted },
             ParseNodeVal::Or { left, right } => NodeVal::Or {
-                left: Self::from_parsed(left)?,
-                right: Self::from_parsed(right)?,
+                left: Rc::new(try_unwrap_rc_refcell_parsenode(left)?.try_into()?),
+                right: Rc::new(try_unwrap_rc_refcell_parsenode(right)?.try_into()?),
             },
             ParseNodeVal::RepetitionRange { min, max, node } => NodeVal::RepetitionRange {
                 min,
                 max,
-                node: Self::from_parsed(node)?,
+                node: Rc::new(try_unwrap_rc_refcell_parsenode(node)?.try_into()?),
             },
         };
 
-        Ok(Rc::new(Node {
+        Ok(Node {
             val,
             next: match parsed_node.next {
                 None => None,
-                Some(next) => Some(Self::from_parsed(next)?),
+                Some(next) => Some(Rc::new(try_unwrap_rc_refcell_parsenode(next)?.try_into()?)),
             },
-        }))
+        })
     }
 }
 

@@ -4,6 +4,9 @@ expression: result
 ---
 ExecResult {
     start: 0,
-    end: 11,
+    end: 21,
     groups: {},
 }
+p: 'hel{2}o wo{2,5}rld fo{1,} bar'
+i: 'hello woorld foooo bar'
+    ^                    ^

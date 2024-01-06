@@ -16,3 +16,6 @@ ExecResult {
         ),
     },
 }
+p: '(?<one>[^ ]+) (?:world) (?<two>foo) '
+i: 'hello world foo bar baz'
+    ^              ^

@@ -19,7 +19,7 @@ impl ExecResult {
         }
     }
 
-    fn merge(&mut self, other: ExecResult) {
+    fn merge_groups(&mut self, other: ExecResult) {
         self.groups.extend(other.groups);
     }
 
@@ -29,7 +29,7 @@ impl ExecResult {
             (None, src @ Some(_)) => src,
             (dest @ Some(_), None) => dest,
             (Some(mut src), Some(dest)) => {
-                src.merge(dest);
+                src.merge_groups(dest);
 
                 Some(src)
             }
@@ -325,7 +325,7 @@ impl<'input> ExecutorImpl<'input> {
             },
             NodeVal::Set { set, inverted } => {
                 let ch = match self.input.chars().nth(cur) {
-                    None => todo!(),
+                    None => return Ok(None),
                     Some(ch) => ch,
                 };
 
@@ -341,28 +341,27 @@ impl<'input> ExecutorImpl<'input> {
                 }
             }
             NodeVal::Or { left, right } => {
-                let match_result =
-                    match self.exec(res.clone(), Some(left), Self::next(Some(left)), cur)? {
-                        None => match self.exec(res.clone(), Some(right), in_group, cur)? {
-                            None => None,
-                            res @ Some(_) => res,
-                        },
+                let match_result = match self.exec(res.clone(), Some(left), in_group, cur)? {
+                    None => match self.exec(res.clone(), Some(right), in_group, cur)? {
+                        None => None,
                         res @ Some(_) => res,
-                    };
+                    },
+                    res @ Some(_) => res,
+                };
 
                 match match_result {
                     None => Ok(None),
                     Some(match_result) => {
-                        let new_res = if let Some(mut res) = res {
-                            res.merge(match_result);
+                        let new_cur = match_result.end + 1;
 
+                        let res = if let Some(mut res) = res {
+                            res.merge_groups(match_result);
                             res
                         } else {
                             match_result
                         };
 
-                        let new_end = new_res.end;
-                        self.exec(Some(new_res), node.next.as_ref(), in_group, cur + new_end)
+                        self.exec(Some(res), node.next.as_ref(), in_group, new_cur)
                     }
                 }
             }

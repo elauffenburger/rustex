@@ -24,10 +24,12 @@ pub enum ParseError {
     MissingCharacterToEscape,
     MissingRightSideOfOr,
     BadGroupConfig,
+    MissingRepetitionRangeMin,
     UnexpectedRepetitionRangeCh(char),
     MissingLeftSideOfModifier,
     UnexpectedEmptyParseNodeOption,
     ParseGraphCycle,
+    UnexpectedEndOfInput,
 }
 
 impl fmt::Debug for ParseError {
@@ -41,6 +43,7 @@ impl fmt::Debug for ParseError {
             ParseError::MissingCharacterToEscape => f.write_str("missing character to escape"),
             ParseError::MissingRightSideOfOr => f.write_str("missing right side of or"),
             ParseError::BadGroupConfig => f.write_str("bad group config"),
+            ParseError::MissingRepetitionRangeMin => f.write_str("missing repetition range min"),
             ParseError::UnexpectedRepetitionRangeCh(ch) => {
                 f.write_fmt(format_args!("unexpected char '{}' in repetition range", ch))
             }
@@ -49,6 +52,7 @@ impl fmt::Debug for ParseError {
                 f.write_str("internal: unexpected unwrap of Option<Rc<RefCell<ParseNode>>>")
             }
             Self::ParseGraphCycle => write!(f, "found reference cycle in parse graph"),
+            Self::UnexpectedEndOfInput => write!(f, "found unexpected end of input"),
         }
     }
 }
@@ -130,28 +134,34 @@ where
     fn parse_repetition_range_vals(&mut self) -> Result<(u32, Option<u32>), ParseError> {
         self.next();
 
-        let mut min_str = String::new();
-        let mut max_str = None;
+        let mut min_str: Option<String> = None;
+        let mut max_str: Option<String> = None;
 
         while let Some(ch) = self.next() {
             match ch {
                 '0'..='9' => {
-                    min_str.push(ch);
+                    if let Some(ref mut min_str) = min_str {
+                        min_str.push(ch);
+                    } else {
+                        min_str = Some(String::from(ch));
+                    }
                 }
                 '}' => break,
                 ',' => {
-                    let mut max_str_local = String::new();
                     while let Some(ch) = self.next() {
                         match ch {
                             '0'..='9' => {
-                                max_str_local.push(ch);
+                                if let Some(ref mut max_str) = max_str {
+                                    max_str.push(ch);
+                                } else {
+                                    max_str = Some(String::from(ch));
+                                }
                             }
                             '}' => break,
                             _ => return Err(ParseError::UnexpectedRepetitionRangeCh(ch)),
                         }
                     }
 
-                    max_str = Some(max_str_local);
                     break;
                 }
                 _ => return Err(ParseError::UnexpectedRepetitionRangeCh(ch)),
@@ -159,6 +169,7 @@ where
         }
 
         let min = min_str
+            .ok_or(ParseError::MissingRepetitionRangeMin)?
             .parse::<u32>()
             .expect("should have caught bad u32 in parsing");
 
@@ -513,7 +524,13 @@ impl Parser {
                 .parse(None)
                 .and_then(|head| match head {
                     None => Ok(None),
-                    Some(head) => Ok(Some(Node::from_parsed(head)?)),
+                    Some(head) => {
+                        let head = Rc::try_unwrap(head)
+                            .map_err(|_| ParseError::ParseGraphCycle)
+                            .map(|head| head.into_inner())?;
+
+                        Ok(Some(Rc::new(head.try_into()?)))
+                    }
                 })
                 .map_err(|err| ParseErrorWithContext {
                     err,
