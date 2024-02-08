@@ -102,12 +102,12 @@ fn test_or() {
     insta::assert_debug_snapshot!(result);
 }
 
-// #[test]
-// fn test_ps() {
-//     let result = run_test(
-//         "(?<user>otacon) {4}(?<pid>[0123456789]+) +(?<cpu>[0123456789]\\.[0123456789]) +(?<mem>[0123456789]\\.[0123456789]) +(?<vsz>[0123456789]+) +(?<rss>[0123456789]+) +(?<tty>[^ ]+) +(?<stat>(?:R|W|X)\\+?) {3}(<start>[^ ]+) +(<time>[^ ]+) (<command>.*)", 
-//         "otacon    730061  0.0  0.0   7480  3112 pts/32   R+   11:44   0:00 ps aux",
-//     );
+#[test]
+fn test_ps() {
+    let result = run_test(
+        "(?<user>otacon) {4}(?<pid>[0123456789]+) +(?<cpu>[0123456789]\\.[0123456789]) +(?<mem>[0123456789]\\.[0123456789]) +(?<vsz>[0123456789]+) +(?<rss>[0123456789]+) +(?<tty>[^ ]+) +(?<stat>(?:R|W|X)\\+?) {3}(?<start>[^ ]+) +(?<time>[^ ]+) (?<command>.*)",
+        "otacon    730061  0.0  0.0   7480  3112 pts/32   R+   11:44   0:00 ps aux",
+    );
 
-//     insta::assert_debug_snapshot!(result);
-// }
+    insta::assert_debug_snapshot!(result);
+}
