@@ -541,7 +541,7 @@ impl Parser {
     }
 }
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct ParseResult {
     pub head: Option<Rc<Node>>,
 }
