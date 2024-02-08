@@ -4,7 +4,7 @@ expression: result
 ---
 ExecResult {
     start: 0,
-    end: 8,
+    end: 12,
     groups: {
         "one": (
             0,
@@ -16,10 +16,10 @@ ExecResult {
         ),
         "three": (
             6,
-            8,
+            12,
         ),
     },
 }
 p: '(?<one>.*?) (?<two>.*?) (?<three>.+?)'
-i: 'f bar baz'
-    ^       ^
+i: 'f bar baz qux'
+    ^           ^
