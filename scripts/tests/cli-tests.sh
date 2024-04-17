@@ -19,7 +19,8 @@ rx() {
 main() {
   build
 
-  echo 'foobar' | rx foo
+  echo 'foobar baz' | rx foo
+  echo '    foobar' | rx foobar
   echo 'bar' | rx foo
   echo 'afoobar' | rx 'f(?<wut>o){2}'
   echo 'afoobar' | rx -e 'foo' -e 'bar'
