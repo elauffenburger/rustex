@@ -1,6 +1,9 @@
 use clap::{CommandFactory, Parser};
 
-use std::io::{self, stderr, BufRead, BufReader, Write};
+use std::{
+    fs,
+    io::{self, stderr, BufRead, BufReader, Write},
+};
 
 use rustex::{executor, parser};
 
@@ -62,18 +65,35 @@ pub fn main() -> Result<(), u32> {
             .collect::<Result<Vec<_>, _>>()
             .map_err(|err| {
                 let _ = stderr().write_fmt(format_args!("error parsing expression: {:?}", err));
-                return 1 as u32;
+                1 as u32
             })?
     };
 
-    if !filenames.is_empty() {
-        todo!("need to implement reading from files")
-    }
+    let files = {
+        let mut files: Vec<Box<dyn io::Read>> = vec![];
+
+        // Add literal files.
+        for filename in filenames {
+            let file = fs::File::open(filename).map_err(|err| {
+                let _ = io::stderr().write_fmt(format_args!("error reading file: {:?}", err));
+                1 as u32
+            })?;
+
+            files.push(Box::new(file));
+        }
+
+        // Add stdin if requested.
+        if read_stdin {
+            files.push(Box::new(io::stdin()));
+        }
+
+        files
+    };
 
     let mut executor = executor::Executor::new();
 
-    if read_stdin {
-        let mut reader = BufReader::new(io::stdin());
+    for file in files {
+        let mut reader = BufReader::new(file);
 
         let mut buf = String::new();
         loop {
