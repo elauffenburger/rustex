@@ -4,7 +4,7 @@ use clap::{CommandFactory, Parser};
 use termcolor::{self, WriteColor};
 
 use std::{
-    fs,
+    ffi, fs,
     io::{self, stderr, BufRead, Write},
 };
 
@@ -44,8 +44,8 @@ struct Args {
     expressions: Vec<String>,
 }
 
-enum FileInput<'a> {
-    File(&'a str, fs::File),
+enum FileInput {
+    File(String, fs::File),
     Stdin(io::Stdin),
 }
 
@@ -100,12 +100,15 @@ pub fn main() -> Result<(), u32> {
 
         // Add literal files.
         for filename in filenames {
-            let file = fs::File::open(filename).map_err(|err| {
-                let _ = io::stderr().write_fmt(format_args!("error reading file: {:?}", err));
+            // The filename might actually be a dir, so we need to transform a single path into multiple file specs.
+            let specs = get_filespecs_from_path(filename).map_err(|err| {
+                let _ = io::stderr().write_fmt(format_args!("error getting file specs: {:?}", err));
                 1 as u32
             })?;
 
-            files.push(FileInput::File(&filename, file));
+            for spec in specs {
+                files.push(spec);
+            }
         }
 
         // Add stdin if requested.
@@ -123,28 +126,16 @@ pub fn main() -> Result<(), u32> {
     let should_print_file_info = searching_multiple_files;
 
     for (file_num, file_spec) in files.into_iter().enumerate() {
-        let (file_handle, file_name, is_stdin): (Box<dyn io::Read>, &str, bool) = match file_spec {
-            FileInput::File(filename, file_handle) => (Box::new(file_handle), filename, false),
-            FileInput::Stdin(stdin) => (Box::new(stdin), "stdin", true),
+        let (file_handle, file_name, is_stdin): (Box<dyn io::Read>, String, bool) = match file_spec {
+            FileInput::File(filename, file_handle) => (Box::new(file_handle), filename.into(), false),
+            FileInput::Stdin(stdin) => (Box::new(stdin), "stdin".into(), true),
         };
-
-        // Write filename info if applicable.
-        if should_print_file_info {
-            printer
-                .set_color(&FILENAME_COLOR_SPEC)
-                .and_then(|_| printer.write(&file_name.bytes().collect::<Vec<_>>()))
-                .and_then(|_| printer.reset())
-                .and_then(|_| printer.write(&[b'\n']))
-                .map_err(|err| {
-                    let _ = io::stderr().write_fmt(format_args!("error writing filename: {:?}", err));
-                    1 as u32
-                })?;
-        }
 
         let mut executor = executor::Executor::new();
         let mut reader = io::BufReader::new(file_handle);
 
         let mut line_num = 0;
+        let mut has_printed_file_info = false;
         loop {
             let mut line = String::new();
             match &reader.read_line(&mut line) {
@@ -166,6 +157,22 @@ pub fn main() -> Result<(), u32> {
                         match exec_res {
                             None => {}
                             Some(res) => {
+                                // Write filename info if applicable and if we haven't already done it.
+                                if should_print_file_info && !has_printed_file_info {
+                                    printer
+                                        .set_color(&FILENAME_COLOR_SPEC)
+                                        .and_then(|_| printer.write(&file_name.bytes().collect::<Vec<_>>()))
+                                        .and_then(|_| printer.reset())
+                                        .and_then(|_| printer.write(&[b'\n']))
+                                        .map_err(|err| {
+                                            let _ = io::stderr()
+                                                .write_fmt(format_args!("error writing filename: {:?}", err));
+                                            1 as u32
+                                        })?;
+
+                                    has_printed_file_info = true;
+                                }
+
                                 // Write line number info if applicable.
                                 if searching_multiple_files || !is_stdin {
                                     printer
@@ -200,13 +207,52 @@ pub fn main() -> Result<(), u32> {
             }
         }
 
-        // If we should print file info and this isn't the last file, print a newline to finish off the file results block.
-        if should_print_file_info && !file_num == num_files - 1 {
+        // If we started printing file info and this isn't the last file, print a newline to finish off the file results block.
+        if has_printed_file_info && !file_num == num_files - 1 {
             printer.write(&[b'\n']).map_err(|err| {
                 let _ = io::stderr().write_fmt(format_args!("error writing end of line to stdout: {:?}", err));
                 1 as u32
             })?;
         }
+    }
+
+    Ok(())
+}
+
+#[derive(Debug)]
+enum GetFileSpecsError {
+    IOError(io::Error),
+}
+
+impl From<io::Error> for GetFileSpecsError {
+    fn from(err: io::Error) -> Self {
+        GetFileSpecsError::IOError(err)
+    }
+}
+
+fn get_filespecs_from_path(filename: &str) -> Result<Vec<FileInput>, GetFileSpecsError> {
+    let mut files = vec![];
+    get_filespecs_from_path_rec(filename, &mut files)?;
+
+    Ok(files)
+}
+
+fn get_filespecs_from_path_rec(filename: &str, files: &mut Vec<FileInput>) -> Result<(), GetFileSpecsError> {
+    let metadata = fs::metadata(filename)?;
+
+    if metadata.is_file() {
+        let file = fs::File::open(filename)?;
+        files.push(FileInput::File(filename.into(), file));
+    } else if metadata.is_dir() {
+        let dir = fs::read_dir(filename)?;
+        for entry in dir {
+            let entry = entry?;
+            let path = entry.path();
+
+            get_filespecs_from_path_rec(path.to_str().expect("expected file path"), files)?;
+        }
+    } else {
+        unimplemented!("file type not supported: {:?}", metadata)
     }
 
     Ok(())
