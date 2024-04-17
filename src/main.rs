@@ -4,11 +4,14 @@ use clap::{CommandFactory, Parser};
 use termcolor::{self, WriteColor};
 
 use std::{
-    ffi, fs,
-    io::{self, stderr, BufRead, Write},
+    fs,
+    io::{self, BufRead, Write},
 };
 
 use rustex::{executor, parser};
+
+mod error;
+use error::Error;
 
 lazy_static! {
     static ref FILENAME_COLOR_SPEC: termcolor::ColorSpec = {
@@ -50,6 +53,10 @@ enum FileInput {
 }
 
 pub fn main() -> Result<(), u32> {
+    Ok(maine()?)
+}
+
+fn maine() -> Result<(), Error> {
     let args = Args::parse();
 
     let (filenames, read_stdin) = {
@@ -88,11 +95,7 @@ pub fn main() -> Result<(), u32> {
             .map_or_else(|| args.expressions, |pattern| vec![pattern])
             .iter()
             .map(|expr| parser.parse_str(expr))
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(|err| {
-                let _ = io::stderr().write_fmt(format_args!("error parsing expression: {:?}", err));
-                1 as u32
-            })?
+            .collect::<Result<Vec<_>, _>>()?
     };
 
     let files = {
@@ -101,12 +104,7 @@ pub fn main() -> Result<(), u32> {
         // Add literal files.
         for filename in filenames {
             // The filename might actually be a dir, so we need to transform a single path into multiple file specs.
-            let specs = get_filespecs_from_path(filename).map_err(|err| {
-                let _ = io::stderr().write_fmt(format_args!("error getting file specs: {:?}", err));
-                1 as u32
-            })?;
-
-            for spec in specs {
+            for spec in get_filespecs_from_path(filename)? {
                 files.push(spec);
             }
         }
@@ -138,106 +136,73 @@ pub fn main() -> Result<(), u32> {
         let mut has_printed_file_info = false;
         loop {
             let mut line = String::new();
-            match &reader.read_line(&mut line) {
-                Err(err) => {
-                    let _ = io::stderr().write_fmt(format_args!("error reading line: {}", err));
-                    return Err(1);
+
+            let n = reader.read_line(&mut line);
+            if n.is_err() {
+                return Err(Error::from(n.err().expect("expected err")));
+            }
+            if n.ok().expect("expected ok") == 0 {
+                break;
+            }
+
+            line_num += 1;
+            let line_bytes = line.bytes().collect::<Vec<_>>();
+
+            for expr in &expressions {
+                let exec_res = executor.exec(expr.clone(), &line)?;
+                if exec_res.is_none() {
+                    continue;
                 }
-                Ok(0) => break,
-                Ok(_) => {
-                    line_num += 1;
-                    let line_bytes = line.bytes().collect::<Vec<_>>();
 
-                    for expr in &expressions {
-                        let exec_res = executor.exec(expr.clone(), &line).map_err(|err| {
-                            let _ = io::stderr().write_fmt(format_args!("error executing expression: {:?}", err));
-                            return 1 as u32;
-                        })?;
+                let res = exec_res.expect("expected result");
 
-                        match exec_res {
-                            None => {}
-                            Some(res) => {
-                                // Write filename info if applicable and if we haven't already done it.
-                                if should_print_file_info && !has_printed_file_info {
-                                    printer
-                                        .set_color(&FILENAME_COLOR_SPEC)
-                                        .and_then(|_| printer.write(&file_name.bytes().collect::<Vec<_>>()))
-                                        .and_then(|_| printer.reset())
-                                        .and_then(|_| printer.write(&[b'\n']))
-                                        .map_err(|err| {
-                                            let _ = io::stderr()
-                                                .write_fmt(format_args!("error writing filename: {:?}", err));
-                                            1 as u32
-                                        })?;
+                // Write filename info if applicable and if we haven't already done it.
+                if should_print_file_info && !has_printed_file_info {
+                    printer
+                        .set_color(&FILENAME_COLOR_SPEC)
+                        .and_then(|_| printer.write(&file_name.bytes().collect::<Vec<_>>()))
+                        .and_then(|_| printer.reset())
+                        .and_then(|_| printer.write(&[b'\n']))?;
 
-                                    has_printed_file_info = true;
-                                }
-
-                                // Write line number info if applicable.
-                                if searching_multiple_files || !is_stdin {
-                                    printer
-                                        .set_color(&LINE_NUMBER_COLOR_SPEC)
-                                        .and_then(|_| printer.write_fmt(format_args!("{:?}", line_num)))
-                                        .and_then(|_| printer.reset())
-                                        .and_then(|_| printer.write(&[b':']))
-                                        .map_err(|err| {
-                                            let _ =
-                                                stderr().write_fmt(format_args!("error writing line info: {:?}", err));
-                                            1 as u32
-                                        })?;
-                                }
-
-                                // Write result info.
-                                printer
-                                    .write(&line_bytes[0..res.start])
-                                    .and_then(|_| printer.set_color(&MATCH_COLOR_SPEC))
-                                    .and_then(|_| printer.write(&line_bytes[res.start..res.end + 1]))
-                                    .and_then(|_| printer.reset())
-                                    .and_then(|_| printer.write(&line_bytes[res.end + 1..]))
-                                    .map_err(|err| {
-                                        let _ = io::stderr()
-                                            .write_fmt(format_args!("error writing results to stdout: {:?}", err));
-
-                                        1 as u32
-                                    })?;
-                            }
-                        }
-                    }
+                    has_printed_file_info = true;
                 }
+
+                // Write line number info if applicable.
+                if searching_multiple_files || !is_stdin {
+                    printer
+                        .set_color(&LINE_NUMBER_COLOR_SPEC)
+                        .and_then(|_| printer.write_fmt(format_args!("{:?}", line_num)))
+                        .and_then(|_| printer.reset())
+                        .and_then(|_| printer.write(&[b':']))?;
+                }
+
+                // Write result info.
+                printer
+                    .write(&line_bytes[0..res.start])
+                    .and_then(|_| printer.set_color(&MATCH_COLOR_SPEC))
+                    .and_then(|_| printer.write(&line_bytes[res.start..res.end + 1]))
+                    .and_then(|_| printer.reset())
+                    .and_then(|_| printer.write(&line_bytes[res.end + 1..]))?;
             }
         }
 
         // If we started printing file info and this isn't the last file, print a newline to finish off the file results block.
         if has_printed_file_info && !file_num == num_files - 1 {
-            printer.write(&[b'\n']).map_err(|err| {
-                let _ = io::stderr().write_fmt(format_args!("error writing end of line to stdout: {:?}", err));
-                1 as u32
-            })?;
+            printer.write(&[b'\n'])?;
         }
     }
 
     Ok(())
 }
 
-#[derive(Debug)]
-enum GetFileSpecsError {
-    IOError(io::Error),
-}
-
-impl From<io::Error> for GetFileSpecsError {
-    fn from(err: io::Error) -> Self {
-        GetFileSpecsError::IOError(err)
-    }
-}
-
-fn get_filespecs_from_path(filename: &str) -> Result<Vec<FileInput>, GetFileSpecsError> {
+fn get_filespecs_from_path(filename: &str) -> Result<Vec<FileInput>, Error> {
     let mut files = vec![];
     get_filespecs_from_path_rec(filename, &mut files)?;
 
     Ok(files)
 }
 
-fn get_filespecs_from_path_rec(filename: &str, files: &mut Vec<FileInput>) -> Result<(), GetFileSpecsError> {
+fn get_filespecs_from_path_rec(filename: &str, files: &mut Vec<FileInput>) -> Result<(), Error> {
     let metadata = fs::metadata(filename)?;
 
     if metadata.is_file() {
