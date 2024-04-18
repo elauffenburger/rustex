@@ -6,7 +6,7 @@ edition = "2021"
 [[bin]]
 edition = "2021"
 name = "rustex-cli"
-path = "src/main.rs"
+path = "src/bin/cli/main.rs"
 
 [dependencies]
 indexmap = "2.0.2"
