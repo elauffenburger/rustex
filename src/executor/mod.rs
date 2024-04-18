@@ -19,8 +19,9 @@ impl ExecResult {
         }
     }
 
-    fn merge_groups(&mut self, other: ExecResult) {
+    fn merge_groups(mut self, other: ExecResult) -> Self {
         self.groups.extend(other.groups);
+        self
     }
 
     fn map_options(dest: Option<Self>, src: Option<Self>) -> Option<Self> {
@@ -28,11 +29,7 @@ impl ExecResult {
             (None, None) => None,
             (None, src @ Some(_)) => src,
             (dest @ Some(_), None) => dest,
-            (Some(mut src), Some(dest)) => {
-                src.merge_groups(dest);
-
-                Some(src)
-            }
+            (Some(src), Some(dest)) => Some(src.merge_groups(dest)),
         }
     }
 }
@@ -335,9 +332,8 @@ impl<'input> ExecutorImpl<'input> {
                     Some(match_result) => {
                         let new_cur = match_result.end + 1;
 
-                        let res = if let Some(mut res) = res {
-                            res.merge_groups(match_result);
-                            res
+                        let res = if let Some(res) = res {
+                            res.merge_groups(match_result)
                         } else {
                             match_result
                         };
