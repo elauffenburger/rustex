@@ -32,7 +32,7 @@ fn run_test<'p, 'i>(pattern: &'p str, input: &'i str) -> FormattableExecResult<'
     let mut executor = executor::Executor::new();
 
     let result = executor
-        .exec(parser.parse_str(pattern).expect("should parse"), input)
+        .exec(&parser.parse_str(pattern).expect("should parse"), input)
         .expect("should exec")
         .expect("expected exec result");
 

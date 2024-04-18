@@ -1,35 +1,24 @@
 use lazy_static::lazy_static;
 
 use clap::{CommandFactory, Parser};
-use termcolor::{self, WriteColor};
+use termcolor::{self, StandardStream, WriteColor};
 
 use std::{
     fs,
     io::{self, BufRead, Write},
+    process::Output,
 };
 
-use rustex::{executor, parser};
+use rustex::{
+    executor::{self, ExecResult},
+    parser,
+};
 
 mod error;
 use error::Error;
 
-lazy_static! {
-    static ref FILENAME_COLOR_SPEC: termcolor::ColorSpec = {
-        let mut spec = termcolor::ColorSpec::new();
-
-        spec.set_fg(Some(termcolor::Color::Magenta)).to_owned()
-    };
-    static ref LINE_NUMBER_COLOR_SPEC: termcolor::ColorSpec = {
-        let mut spec = termcolor::ColorSpec::new();
-
-        spec.set_fg(Some(termcolor::Color::Green)).to_owned()
-    };
-    static ref MATCH_COLOR_SPEC: termcolor::ColorSpec = {
-        let mut spec = termcolor::ColorSpec::new();
-
-        spec.set_bold(true).set_fg(Some(termcolor::Color::Red)).to_owned()
-    };
-}
+mod printer;
+use printer::OutputPrinter;
 
 #[derive(clap::Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -117,7 +106,9 @@ fn maine() -> Result<(), Error> {
         files
     };
 
-    let mut printer = termcolor::Ansi::new(termcolor::StandardStream::stdout(termcolor::ColorChoice::AlwaysAnsi));
+    let mut printer = OutputPrinter::new(termcolor::Ansi::new(termcolor::StandardStream::stdout(
+        termcolor::ColorChoice::AlwaysAnsi,
+    )));
 
     let num_files = (&files).len();
     let searching_multiple_files = num_files > 1;
@@ -137,58 +128,42 @@ fn maine() -> Result<(), Error> {
         loop {
             let mut line = String::new();
 
-            let n = reader.read_line(&mut line);
-            if n.is_err() {
-                return Err(Error::from(n.err().expect("expected err")));
-            }
-            if n.ok().expect("expected ok") == 0 {
-                break;
-            }
+            match reader.read_line(&mut line) {
+                Err(err) => return Err(Error::from(err)),
+                Ok(0) => break,
+                _ => {}
+            };
 
             line_num += 1;
             let line_bytes = line.bytes().collect::<Vec<_>>();
 
             for expr in &expressions {
-                let exec_res = executor.exec(expr.clone(), &line)?;
+                let exec_res = executor.exec(expr, &line)?;
                 if exec_res.is_none() {
                     continue;
                 }
 
-                let res = exec_res.expect("expected result");
+                let res = exec_res.unwrap();
 
                 // Write filename info if applicable and if we haven't already done it.
                 if should_print_file_info && !has_printed_file_info {
-                    printer
-                        .set_color(&FILENAME_COLOR_SPEC)
-                        .and_then(|_| printer.write(&file_name.bytes().collect::<Vec<_>>()))
-                        .and_then(|_| printer.reset())
-                        .and_then(|_| printer.write(&[b'\n']))?;
-
+                    printer.print_file_start(&file_name.bytes().collect::<Vec<_>>())?;
                     has_printed_file_info = true;
                 }
 
                 // Write line number info if applicable.
                 if searching_multiple_files || !is_stdin {
-                    printer
-                        .set_color(&LINE_NUMBER_COLOR_SPEC)
-                        .and_then(|_| printer.write_fmt(format_args!("{:?}", line_num)))
-                        .and_then(|_| printer.reset())
-                        .and_then(|_| printer.write(&[b':']))?;
+                    printer.print_line_num(line_num)?;
                 }
 
                 // Write result info.
-                printer
-                    .write(&line_bytes[0..res.start])
-                    .and_then(|_| printer.set_color(&MATCH_COLOR_SPEC))
-                    .and_then(|_| printer.write(&line_bytes[res.start..res.end + 1]))
-                    .and_then(|_| printer.reset())
-                    .and_then(|_| printer.write(&line_bytes[res.end + 1..]))?;
+                printer.print_match(&res, &line_bytes)?;
             }
         }
 
         // If we started printing file info and this isn't the last file, print a newline to finish off the file results block.
         if has_printed_file_info && !file_num == num_files - 1 {
-            printer.write(&[b'\n'])?;
+            printer.print_file_end()?;
         }
     }
 
@@ -214,7 +189,7 @@ fn get_filespecs_from_path_rec(filename: &str, files: &mut Vec<FileInput>) -> Re
             let entry = entry?;
             let path = entry.path();
 
-            get_filespecs_from_path_rec(path.to_str().expect("expected file path"), files)?;
+            get_filespecs_from_path_rec(path.to_str().unwrap(), files)?;
         }
     } else {
         unimplemented!("file type not supported: {:?}", metadata)

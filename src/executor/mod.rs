@@ -72,10 +72,10 @@ impl Executor {
         Executor {}
     }
 
-    pub fn exec(&mut self, parsed: parser::ParseResult, input: &str) -> Result<Option<ExecResult>, ExecError> {
+    pub fn exec(&mut self, parsed: &parser::ParseResult, input: &str) -> Result<Option<ExecResult>, ExecError> {
         let mut executor = ExecutorImpl { input, n: input.len() };
 
-        let head: Option<Rc<Node>> = parsed.head.map(|head| Rc::from(head));
+        let head: Option<Rc<Node>> = parsed.head.clone().map(|head| Rc::from(head));
         executor.exec(None, head.as_ref(), None, 0)
     }
 }
