@@ -494,15 +494,18 @@ impl Parser {
         Ok(ParseResult {
             head: parser
                 .parse(None)
-                .and_then(|head| match head {
-                    None => Ok(None),
-                    Some(head) => {
-                        let head = Rc::try_unwrap(head)
-                            .map_err(|_| ParseError::ParseGraphCycle)
-                            .map(|head| head.into_inner())?;
+                .and_then(|maybe_head| {
+                    let head_ptr = match maybe_head {
+                        None => return Ok(None),
+                        Some(head) => head,
+                    };
 
-                        Ok(Some(Rc::new(head.try_into()?)))
-                    }
+                    let head = Rc::try_unwrap(head_ptr)
+                        .map_err(|_| ParseError::ParseGraphCycle)?
+                        .into_inner()
+                        .try_into()?;
+
+                    Ok(Some(Rc::new(head)))
                 })
                 .map_err(|err| ParseErrorWithContext {
                     err,
