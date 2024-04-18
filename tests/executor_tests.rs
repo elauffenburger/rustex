@@ -36,11 +36,7 @@ fn run_test<'p, 'i>(pattern: &'p str, input: &'i str) -> FormattableExecResult<'
         .expect("should exec")
         .expect("expected exec result");
 
-    FormattableExecResult {
-        result,
-        pattern,
-        input,
-    }
+    FormattableExecResult { result, pattern, input }
 }
 
 #[test]
@@ -80,10 +76,7 @@ fn test_repetition() {
 
 #[test]
 fn test_groups() {
-    let result = run_test(
-        "(?<one>[^ ]+) (?:world) (?<two>foo) ",
-        "hello world foo bar baz",
-    );
+    let result = run_test("(?<one>[^ ]+) (?:world) (?<two>foo) ", "hello world foo bar baz");
 
     insta::assert_debug_snapshot!(result);
 }

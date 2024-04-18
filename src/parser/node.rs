@@ -4,9 +4,7 @@ use indexmap::IndexSet;
 
 use super::parse_node::*;
 
-fn try_unwrap_rc_refcell_parsenode(
-    parsed_node: Rc<RefCell<ParseNode>>,
-) -> Result<ParseNode, super::ParseError> {
+fn try_unwrap_rc_refcell_parsenode(parsed_node: Rc<RefCell<ParseNode>>) -> Result<ParseNode, super::ParseError> {
     Rc::try_unwrap(parsed_node)
         .map_err(|_| super::ParseError::ParseGraphCycle)
         .map(|refcell| refcell.into_inner())

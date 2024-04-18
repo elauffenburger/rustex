@@ -1,5 +1,3 @@
-
-
 use clap::{CommandFactory, Parser};
 use termcolor::{self};
 

@@ -35,9 +35,7 @@ pub enum ParseError {
 impl fmt::Debug for ParseError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            ParseError::UnexpectedCharErr(ch) => {
-                f.write_fmt(format_args!("unexpected char '{}'", ch))
-            }
+            ParseError::UnexpectedCharErr(ch) => f.write_fmt(format_args!("unexpected char '{}'", ch)),
             ParseError::UnterminatedCharSet => f.write_str("unterminated character set"),
             ParseError::EmptyCaptureGroup => f.write_str("empty capture group"),
             ParseError::MissingCharacterToEscape => f.write_str("missing character to escape"),
@@ -88,9 +86,7 @@ impl<Iter> ParserImpl<Iter>
 where
     Iter: Iterator<Item = char>,
 {
-    const SPECIAL_CHARS: &[char] = &[
-        '(', ')', '{', '}', '[', ']', '|', '\\', '^', '$', '.', '*', '?', '+',
-    ];
+    const SPECIAL_CHARS: &[char] = &['(', ')', '{', '}', '[', ']', '|', '\\', '^', '$', '.', '*', '?', '+'];
 
     fn parse_group(&mut self) -> Result<ParseNodeVal, ParseError> {
         self.next();
@@ -173,10 +169,7 @@ where
             .parse::<u32>()
             .expect("should have caught bad u32 in parsing");
 
-        let max = max_str.map(|max| {
-            max.parse::<u32>()
-                .expect("should have caught bad u32 in parsing")
-        });
+        let max = max_str.map(|max| max.parse::<u32>().expect("should have caught bad u32 in parsing"));
 
         Ok((min, max))
     }
@@ -215,10 +208,7 @@ where
         let orig_node = mem::take(node).unwrap();
 
         // Grab the val of the original node.
-        let orig_node_val = mem::replace(
-            &mut orig_node.as_ref().borrow_mut().val,
-            ParseNodeVal::Poisoned,
-        );
+        let orig_node_val = mem::replace(&mut orig_node.as_ref().borrow_mut().val, ParseNodeVal::Poisoned);
 
         let res_val = decorator(rcref(ParseNode {
             val: orig_node_val,
@@ -234,9 +224,7 @@ where
         Ok(())
     }
 
-    fn decorate_node_option_for_last_char_modifiers<
-        F: FnOnce(Rc<RefCell<ParseNode>>) -> ParseNodeVal,
-    >(
+    fn decorate_node_option_for_last_char_modifiers<F: FnOnce(Rc<RefCell<ParseNode>>) -> ParseNodeVal>(
         node: &mut Option<Rc<RefCell<ParseNode>>>,
         decorator: F,
     ) -> Result<(), ParseError> {
@@ -254,10 +242,7 @@ where
 
         let orig_node = mem::take(node).unwrap();
 
-        let orig_node_val = mem::replace(
-            &mut orig_node.as_ref().borrow_mut().val,
-            ParseNodeVal::Poisoned,
-        );
+        let orig_node_val = mem::replace(&mut orig_node.as_ref().borrow_mut().val, ParseNodeVal::Poisoned);
 
         let (new_node_val_word, last_ch_as_str) = match orig_node_val {
             ParseNodeVal::Word(word) => {
@@ -312,10 +297,7 @@ where
         return true;
     }
 
-    fn parse(
-        self: &mut Self,
-        until: Option<char>,
-    ) -> Result<Option<Rc<RefCell<ParseNode>>>, ParseError> {
+    fn parse(self: &mut Self, until: Option<char>) -> Result<Option<Rc<RefCell<ParseNode>>>, ParseError> {
         let mut head = None;
         let mut prev: Option<Rc<RefCell<ParseNode>>> = None;
 
@@ -409,10 +391,7 @@ where
 
                     let greedy = self.chomp_greediness();
                     Self::decorate_node_option_for_last_char_modifiers(&mut prev, |old_node| {
-                        ParseNodeVal::ZeroOrMore {
-                            node: old_node,
-                            greedy,
-                        }
+                        ParseNodeVal::ZeroOrMore { node: old_node, greedy }
                     })?;
 
                     continue;
@@ -422,10 +401,7 @@ where
 
                     let greedy = self.chomp_greediness();
                     Self::decorate_node_option_for_last_char_modifiers(&mut prev, |old_node| {
-                        ParseNodeVal::OneOrMore {
-                            node: old_node,
-                            greedy,
-                        }
+                        ParseNodeVal::OneOrMore { node: old_node, greedy }
                     })?;
 
                     continue;
@@ -497,8 +473,7 @@ where
         match self.next() {
             None => return Err(ParseError::MissingCharacterToEscape),
             Some(ch) => match ch {
-                '(' | ')' | '{' | '}' | '[' | ']' | '|' | '\\' | '^' | '$' | '.' | '*' | '?'
-                | '+' => Ok(ch),
+                '(' | ')' | '{' | '}' | '[' | ']' | '|' | '\\' | '^' | '$' | '.' | '*' | '?' | '+' => Ok(ch),
                 _ => return Err(ParseError::UnexpectedCharErr(ch)),
             },
         }
@@ -510,10 +485,7 @@ impl Parser {
         Parser {}
     }
 
-    pub fn parse_str<'str>(
-        self: &Self,
-        input: &'str str,
-    ) -> Result<ParseResult, ParseErrorWithContext<'str>> {
+    pub fn parse_str<'str>(self: &Self, input: &'str str) -> Result<ParseResult, ParseErrorWithContext<'str>> {
         let mut parser = ParserImpl {
             iter: input.chars().peekable(),
             index: 0,
