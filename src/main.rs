@@ -1,16 +1,15 @@
-use lazy_static::lazy_static;
+
 
 use clap::{CommandFactory, Parser};
-use termcolor::{self, StandardStream, WriteColor};
+use termcolor::{self};
 
 use std::{
     fs,
-    io::{self, BufRead, Write},
-    process::Output,
+    io::{self, BufRead},
 };
 
 use rustex::{
-    executor::{self, ExecResult},
+    executor::{self},
     parser,
 };
 
