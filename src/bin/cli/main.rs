@@ -17,6 +17,8 @@ use printer::OutputPrinter;
 mod matcher;
 use matcher::Matcher;
 
+mod replace;
+
 #[derive(clap::Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 struct Args {
@@ -31,6 +33,10 @@ struct Args {
     /// Patterns to search for.
     #[arg(short = 'e', long, conflicts_with = "pattern")]
     expressions: Vec<String>,
+
+    /// Replacement spec.
+    #[arg(short = 'r', long)]
+    replace: Option<String>,
 }
 
 pub fn main() -> Result<(), u32> {
@@ -106,7 +112,11 @@ fn maine() -> Result<(), Error> {
         ))),
     };
 
-    matcher.run(&mut files, &expressions)
+    matcher.run(matcher::RunArgs {
+        files: &mut files,
+        expressions: &expressions,
+        replace_spec: args.replace.map(|str| replace::ReplaceSpec::from(str.as_str())),
+    })
 }
 
 enum FileInput {

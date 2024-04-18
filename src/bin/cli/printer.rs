@@ -61,4 +61,12 @@ impl<W: std::io::Write> OutputPrinter<W> {
             .and_then(|_| self.pr.reset())
             .and_then(|_| self.pr.write(&line_bytes[res.end + 1..]))
     }
+
+    pub fn print_replacement(&mut self, replacement: &[u8]) -> std::io::Result<usize> {
+        self.pr
+            .set_color(&MATCH_COLOR_SPEC)
+            .and_then(|_| self.pr.write(replacement))
+            .and_then(|_| self.pr.reset())
+            .and_then(|_| self.pr.write(&[b'\n']))
+    }
 }

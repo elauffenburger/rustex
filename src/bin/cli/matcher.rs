@@ -2,19 +2,25 @@ use std::io::{self, BufRead};
 
 use rustex::{executor, parser::ParseResult};
 
-use crate::{error::Error, printer, FileInput};
+use crate::{error::Error, printer, replace::ReplaceSpec, FileInput};
+
+pub(crate) struct RunArgs<'a> {
+    pub files: &'a mut [FileInput],
+    pub expressions: &'a [ParseResult],
+    pub replace_spec: Option<ReplaceSpec>,
+}
 
 pub(crate) struct Matcher<W: io::Write> {
     pub printer: printer::OutputPrinter<W>,
 }
 
 impl<W: io::Write> Matcher<W> {
-    pub(crate) fn run(&mut self, files: &mut [FileInput], expressions: &[ParseResult]) -> Result<(), Error> {
-        let num_files = files.len();
+    pub(crate) fn run(&mut self, args: RunArgs) -> Result<(), Error> {
+        let num_files = (&args.files).len();
         let searching_multiple_files = num_files > 1;
         let should_print_file_info = searching_multiple_files;
 
-        for (file_num, file_spec) in files.iter_mut().enumerate() {
+        for (file_num, file_spec) in args.files.iter_mut().enumerate() {
             let (file_handle, file_name, is_stdin): (Box<dyn io::Read>, String, bool) = match file_spec {
                 FileInput::File(filename, file_handle) => (Box::new(file_handle), filename.to_string(), false),
                 FileInput::Stdin(stdin) => (Box::new(stdin), "stdin".into(), true),
@@ -37,7 +43,7 @@ impl<W: io::Write> Matcher<W> {
                 line_num += 1;
                 let line_bytes = line.bytes().collect::<Vec<_>>();
 
-                for expr in expressions {
+                for expr in args.expressions {
                     let exec_res = executor.exec(expr, &line)?;
                     if exec_res.is_none() {
                         continue;
@@ -57,7 +63,16 @@ impl<W: io::Write> Matcher<W> {
                     }
 
                     // Write result info.
-                    self.printer.print_match(&res, &line_bytes)?;
+                    match &args.replace_spec {
+                        Some(replace_spec) => {
+                            if let Some(replaced) = replace_spec.perform_replace(&line, &res) {
+                                self.printer.print_replacement(replaced.as_bytes())?;
+                            }
+                        }
+                        None => {
+                            self.printer.print_match(&res, &line_bytes)?;
+                        }
+                    }
                 }
             }
 

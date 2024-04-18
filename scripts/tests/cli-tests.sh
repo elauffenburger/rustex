@@ -49,6 +49,7 @@ main() {
   DIR=$(mktemp -d) && echo $'foo\nfoobar\nbarfoo' > "$DIR/file1" && echo 'barbaz' > "$DIR/file2" && t '(foo|bar)' "$DIR"
   t 'hellow?world' <(echo 'helloworld')
   t 'hello(w?)world' <(echo 'helloworld')
+  rx 'h(?<1>el)lo (?<2>wo)rld' -r '$1 $2' <(echo 'hello world!')
 }
 
 main "$@"
