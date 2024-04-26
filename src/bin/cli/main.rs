@@ -1,10 +1,7 @@
 use clap::{CommandFactory, Parser};
 use termcolor::{self};
 
-use std::{
-    fs,
-    io::{self},
-};
+use std::{fs, io, thread::sleep, time::Duration};
 
 use rustex::{
     executor::{self},
@@ -119,10 +116,7 @@ fn get_filespecs_from_path(filename: &str) -> Result<Vec<FileInput>, Error> {
     fn rec(filename: &str, files: &mut Vec<FileInput>) -> Result<(), Error> {
         let metadata = fs::metadata(filename)?;
 
-        if metadata.is_file() {
-            let file = fs::File::open(filename)?;
-            files.push(FileInput::File(filename.into(), file));
-        } else if metadata.is_dir() {
+        if metadata.is_dir() {
             let dir = fs::read_dir(filename)?;
             for entry in dir {
                 let entry = entry?;
@@ -131,7 +125,8 @@ fn get_filespecs_from_path(filename: &str) -> Result<Vec<FileInput>, Error> {
                 rec(path.to_str().unwrap(), files)?;
             }
         } else {
-            unimplemented!("file type not supported: {:?}", metadata)
+            let file = fs::File::open(filename)?;
+            files.push(FileInput::File(filename.into(), file));
         }
 
         Ok(())
