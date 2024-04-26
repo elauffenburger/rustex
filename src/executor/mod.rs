@@ -276,10 +276,31 @@ impl<'input> ExecutorImpl<'input> {
                 self.exec(res, node.next.as_ref(), in_group, new_cur)
             }
             NodeVal::Optional(to_test) => {
-                // Attempt to match at most one time, but continue on if we didn't match.
-                let (res, new_cur, _, _) = self.exec_repeated(res, Some(to_test), in_group, cur, Some(1), None)?;
+                // Try to match with this node and try _without_ it -- whichever one matches the furthest is the one we'll take!
+                let res_taken = {
+                    // Attempt to match at most one time, but continue on if we didn't match.
+                    let (res, new_cur, _, _) =
+                        self.exec_repeated(res.clone(), Some(to_test), in_group, cur, Some(1), None)?;
 
-                self.exec(res, node.next.as_ref(), in_group, new_cur)
+                    self.exec(res, node.next.as_ref(), in_group, new_cur)
+                }?;
+
+                let res_skipped = self.exec(res, node.next.as_ref(), in_group, cur)?;
+
+                match (res_taken, res_skipped) {
+                    (None, None) => Ok(None),
+                    (None, res @ Some(_)) => Ok(res),
+                    (res @ Some(_), None) => Ok(res),
+                    (Some(res_taken), Some(res_skipped)) => {
+                        let res = if res_taken.end > res_skipped.end {
+                            Some(res_taken)
+                        } else {
+                            Some(res_skipped)
+                        };
+
+                        Ok(res)
+                    }
+                }
             }
             NodeVal::Group { group, cfg: group_cfg } => match self.exec(res.clone(), Some(group), Some(node), cur)? {
                 None => return Ok(None),

@@ -47,6 +47,7 @@ main() {
   FILE=$(mktemp) && echo 'foobar' > "$FILE" && t foo "$FILE"
   DIR=$(mktemp -d) && echo $'foo\nfoobar\nbarfoo' > "$DIR/file1" && echo 'barbaz' > "$DIR/file2" && t '(foo|bar)' "$DIR/file1" "$DIR/file2"
   DIR=$(mktemp -d) && echo $'foo\nfoobar\nbarfoo' > "$DIR/file1" && echo 'barbaz' > "$DIR/file2" && t '(foo|bar)' "$DIR"
+  t 'hellow?world' <(echo 'helloworld')
   t 'hello(w?)world' <(echo 'helloworld')
 }
 
