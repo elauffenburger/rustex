@@ -86,7 +86,7 @@ impl<Iter> ParserImpl<Iter>
 where
     Iter: Iterator<Item = char>,
 {
-    const SPECIAL_CHARS: &[char] = &['(', ')', '{', '}', '[', ']', '|', '\\', '^', '$', '.', '*', '?', '+'];
+    const SPECIAL_CHARS: &'static [char] = &['(', ')', '{', '}', '[', ']', '|', '\\', '^', '$', '.', '*', '?', '+'];
 
     fn parse_group(&mut self) -> Result<ParseNodeVal, ParseError> {
         self.next();
