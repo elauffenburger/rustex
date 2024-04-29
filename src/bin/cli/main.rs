@@ -34,6 +34,8 @@ struct Args {
 }
 
 pub fn main() -> Result<(), u32> {
+    tracing_subscriber::fmt::init();
+
     Ok(maine()?)
 }
 

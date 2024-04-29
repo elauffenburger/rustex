@@ -1,6 +1,9 @@
 use core::fmt;
 use std::{cell::RefCell, collections::VecDeque, rc::Rc};
 
+use log::{debug, info};
+use tracing::instrument;
+
 use crate::parser::{self, MutNode, Node, NodeVal};
 
 #[derive(Debug, Clone)]
@@ -69,6 +72,7 @@ impl Executor {
         Executor {}
     }
 
+    #[instrument(skip(self))]
     pub fn exec(&mut self, parsed: &parser::ParseResult, input: &str) -> Result<Option<ExecResult>, ExecError> {
         let head: Option<Rc<Node>> = parsed.head.clone().map(|head| Rc::from(head));
 
@@ -86,7 +90,7 @@ impl Executor {
 
         let mut best_match = None;
         while let Some(state) = executor.frontier.pop_front() {
-            dbg!("popped new state", &state);
+            debug!("popped new state: {:?}", &state);
 
             if let Some(res) = executor.exec(state.res, state.node.as_ref(), state.cur)? {
                 match &best_match {
@@ -142,15 +146,13 @@ impl<'input> ExecutorImpl<'input> {
         }
     }
 
+    #[instrument(skip(self, res))]
     fn exec(
         &mut self,
         res: Option<ExecResult>,
         node: Option<&Rc<Node>>,
         cur: usize,
     ) -> Result<Option<ExecResult>, ExecError> {
-        dbg!(&node);
-        dbg!(cur);
-
         let node = match node {
             None => match res {
                 None => return Ok(res),
@@ -191,15 +193,13 @@ impl<'input> ExecutorImpl<'input> {
                     return Ok(None);
                 }
 
-                println!("dbg: looking for {:?} from {:?}", word, self.input[cur..].to_string());
-
                 match self.find_word(word, cur, res.is_none()) {
                     None => {
-                        println!("dbg: no match!");
+                        debug!("no match!");
                         Ok(None)
                     }
                     Some((start, end)) => {
-                        println!("dbg: matched!");
+                        debug!("matched!");
                         self.exec(res.or(Some(ExecResult::new(start))), node.next.as_ref(), end + 1)
                     }
                 }
@@ -213,8 +213,7 @@ impl<'input> ExecutorImpl<'input> {
                     node: node.next.clone(),
                     cur,
                 });
-                println!("dbg: optional - skip this node state:");
-                dbg!(self.frontier.front());
+                debug!("state: {:?}", self.frontier.front());
 
                 // Branch the "take this node" case.
                 self.frontier.push_front(ExecutorState {
@@ -230,8 +229,7 @@ impl<'input> ExecutorImpl<'input> {
                     ),
                     cur,
                 });
-                println!("dbg: optional - take this node state:");
-                dbg!(self.frontier.front());
+                debug!("state: {:?}", self.frontier.front());
 
                 // Bail and let the executor explore these states in the frontier later.
                 return Ok(res);
@@ -247,8 +245,7 @@ impl<'input> ExecutorImpl<'input> {
                     node: node.next.clone(),
                     cur,
                 });
-                println!("dbg: * - skip this node state");
-                dbg!(self.frontier.front());
+                debug!("state: {:?}", self.frontier.front());
 
                 // Branch the "one-or-more" case.
                 self.frontier.push_front(ExecutorState {
@@ -262,8 +259,7 @@ impl<'input> ExecutorImpl<'input> {
                     })),
                     cur,
                 });
-                println!("dbg: * - take this node state");
-                dbg!(self.frontier.front());
+                debug!("state: {:?}", self.frontier.front());
 
                 // Bail and let the executor explore these states in the frontier later.
                 return Ok(res);
@@ -274,31 +270,29 @@ impl<'input> ExecutorImpl<'input> {
                 let mut res = res;
                 let mut cur = cur;
 
-                println!("dbg: looking for + match");
-                dbg!(cur);
+                debug!("looking for 1 or more matches; cur: {:?}", cur);
 
                 // Match at least once.
                 let new_res = self.exec(res.clone(), Some(to_test), cur)?;
                 res = ExecResult::map_options(res, new_res.clone());
                 match new_res {
                     None => {
-                        println!("dbg: failed to match");
+                        debug!("failed to match!");
                         return Ok(None);
                     }
                     Some(new_res) => {
                         cur = new_res.end + 1;
 
-                        println!("dbg: matched!");
-                        dbg!(cur);
+                        debug!("matched! cur: {:?}", cur);
                     }
                 }
 
                 // If lazy and we can match the next node, we're done!
                 if !*greedy {
-                    println!("dbg: lazy matching...");
+                    debug!("lazy matching...");
                     let res = self.exec(res.clone(), node.next.clone().as_ref(), cur)?;
                     if res.is_some() {
-                        println!("dbg: lazy matched; done!");
+                        debug!("lazy matched!");
                         return Ok(res);
                     }
                 }
@@ -315,7 +309,7 @@ impl<'input> ExecutorImpl<'input> {
                     })),
                     cur,
                 });
-                dbg!(self.frontier.front());
+                debug!("state: {:?}", self.frontier.front());
 
                 return Ok(None);
             }

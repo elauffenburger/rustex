@@ -1,9 +1,11 @@
-use std::fmt::Debug;
+use std::sync;
 
 use rustex::{
     executor::{self, ExecResult},
     parser,
 };
+
+static INIT: sync::Once = std::sync::Once::new();
 
 struct FormattableExecResult<'pattern, 'input> {
     result: ExecResult,
@@ -11,7 +13,7 @@ struct FormattableExecResult<'pattern, 'input> {
     input: &'input str,
 }
 
-impl Debug for FormattableExecResult<'_, '_> {
+impl core::fmt::Debug for FormattableExecResult<'_, '_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         self.result.fmt(f)?;
         f.write_str("\n")?;
@@ -32,6 +34,10 @@ impl Debug for FormattableExecResult<'_, '_> {
 }
 
 fn run_test<'p, 'i>(pattern: &'p str, input: &'i str) -> FormattableExecResult<'p, 'i> {
+    INIT.call_once(|| {
+        tracing_subscriber::fmt::init();
+    });
+
     let parser = parser::Parser::new();
     let mut executor = executor::Executor::new();
 
