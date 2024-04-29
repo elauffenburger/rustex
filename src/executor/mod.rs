@@ -1,7 +1,7 @@
 use core::fmt;
-use std::rc::Rc;
+use std::{cell::RefCell, collections::VecDeque, rc::Rc};
 
-use crate::parser::{self, Node, NodeVal};
+use crate::parser::{self, MutNode, Node, NodeVal};
 
 #[derive(Debug, Clone)]
 pub struct ExecResult {

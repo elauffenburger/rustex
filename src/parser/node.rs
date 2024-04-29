@@ -150,6 +150,11 @@ impl fmt::Debug for Node {
 
                 Ok(())
             }
+            NodeVal::GroupEnd { .. } => {
+                f.write_str("(/)")?;
+
+                Ok(())
+            }
         }?;
 
         match &self.next {
