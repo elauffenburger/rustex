@@ -1,7 +1,7 @@
 use clap::{CommandFactory, Parser};
 use termcolor::{self};
 
-use std::{fs, io, thread::sleep, time::Duration};
+use std::{fs, io};
 
 use rustex::{
     executor::{self},
