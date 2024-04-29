@@ -4,9 +4,9 @@ expression: result
 ---
 ExecResult {
     start: 0,
-    end: 6,
+    end: 9,
     groups: {},
 }
-p: '(.*?) (.*?) (.+?)'
-i: 'f bar baz qux'
-    ^     ^
+p: 'hellow?world'
+i: 'helloworld'
+    ^        ^

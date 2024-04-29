@@ -22,7 +22,11 @@ impl Debug for FormattableExecResult<'_, '_> {
         f.write_fmt(format_args!(
             "    {}^{}^",
             " ".repeat(self.result.start as usize),
-            " ".repeat((self.result.end - self.result.start) - 1 as usize),
+            " ".repeat(if self.result.end > 0 {
+                (self.result.end - self.result.start) - 1
+            } else {
+                0
+            } as usize),
         ))
     }
 }
@@ -82,8 +86,15 @@ fn test_groups() {
 }
 
 #[test]
+fn test_groups_simple() {
+    let result = run_test("h(ell)o w(or)ld", "hello world foo bar baz");
+
+    insta::assert_debug_snapshot!(result);
+}
+
+#[test]
 fn test_lazy_match() {
-    let result = run_test("(?<one>.*?) (?<two>.*?) (?<three>.+?)", "f bar baz qux");
+    let result = run_test("(.*?) (.*?) (.+?)", "f bar baz qux");
 
     insta::assert_debug_snapshot!(result);
 }
@@ -101,6 +112,20 @@ fn test_ps() {
         "(?<user>otacon) {4}(?<pid>[0123456789]+) +(?<cpu>[0123456789]\\.[0123456789]) +(?<mem>[0123456789]\\.[0123456789]) +(?<vsz>[0123456789]+) +(?<rss>[0123456789]+) +(?<tty>[^ ]+) +(?<stat>(?:R|W|X)\\+?) {3}(?<start>[^ ]+) +(?<time>[^ ]+) (?<command>.*)",
         "otacon    730061  0.0  0.0   7480  3112 pts/32   R+   11:44   0:00 ps aux",
     );
+
+    insta::assert_debug_snapshot!(result);
+}
+
+#[test]
+fn test_optional_match_branch() {
+    let result = run_test("hellow?world", "helloworld");
+
+    insta::assert_debug_snapshot!(result);
+}
+
+#[test]
+fn test_optional_match_branch_group() {
+    let result = run_test("hello(w?)world", "helloworld");
 
     insta::assert_debug_snapshot!(result);
 }
