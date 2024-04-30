@@ -10,11 +10,11 @@ pub(crate) struct Matcher<W: io::Write> {
 
 impl<W: io::Write> Matcher<W> {
     pub(crate) fn run(&mut self, files: &mut [FileInput], expressions: &[ParseResult]) -> Result<(), Error> {
-        let num_files = (&files).len();
+        let num_files = files.len();
         let searching_multiple_files = num_files > 1;
         let should_print_file_info = searching_multiple_files;
 
-        for (file_num, file_spec) in files.into_iter().enumerate() {
+        for (file_num, file_spec) in files.iter_mut().enumerate() {
             let (file_handle, file_name, is_stdin): (Box<dyn io::Read>, String, bool) = match file_spec {
                 FileInput::File(filename, file_handle) => (Box::new(file_handle), filename.to_string(), false),
                 FileInput::Stdin(stdin) => (Box::new(stdin), "stdin".into(), true),

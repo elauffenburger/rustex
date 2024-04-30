@@ -2,87 +2,14 @@ use std::{cell::RefCell, fmt, rc::Rc};
 
 use indexmap::IndexSet;
 
-use super::parse_node::*;
+use crate::parser::ParseNodeVal;
+
+use super::ParseNode;
 
 #[derive(Clone)]
 pub struct Node {
     pub val: NodeVal,
     pub next: Option<Rc<Node>>,
-}
-
-impl Node {
-    pub fn into_mut(self) -> MutNode {
-        self.into()
-    }
-}
-
-impl TryFrom<MutNode> for Node {
-    type Error = Rc<RefCell<MutNode>>;
-
-    fn try_from(node: MutNode) -> Result<Self, Self::Error> {
-        fn try_unwrap_mut_node(mut_node: Rc<RefCell<MutNode>>) -> Result<MutNode, Rc<RefCell<MutNode>>> {
-            Rc::try_unwrap(mut_node).map(|refcell| refcell.into_inner())
-        }
-
-        Ok(Node {
-            val: node.val.clone(),
-            next: match node.next {
-                None => None,
-                Some(node) => Some(Rc::new(try_unwrap_mut_node(node)?.try_into()?)),
-            },
-        })
-    }
-}
-
-impl TryFrom<ParseNode> for Node {
-    type Error = super::ParseError;
-
-    fn try_from(parsed_node: ParseNode) -> Result<Self, Self::Error> {
-        fn try_unwrap_parse_node(parse_node: Rc<RefCell<ParseNode>>) -> Result<ParseNode, super::ParseError> {
-            Rc::try_unwrap(parse_node)
-                .map_err(|_| super::ParseError::ParseGraphCycle)
-                .map(|refcell| refcell.into_inner())
-        }
-
-        let val = match parsed_node.val {
-            ParseNodeVal::Poisoned => NodeVal::Poisoned,
-            ParseNodeVal::Word(word) => NodeVal::Word(word),
-            ParseNodeVal::Any => NodeVal::Any,
-            ParseNodeVal::ZeroOrMore { node, greedy } => NodeVal::ZeroOrMore {
-                node: Rc::new(try_unwrap_parse_node(node)?.try_into()?),
-                greedy,
-            },
-            ParseNodeVal::OneOrMore { node, greedy } => NodeVal::OneOrMore {
-                node: Rc::new(try_unwrap_parse_node(node)?.try_into()?),
-                greedy,
-            },
-            ParseNodeVal::Start => NodeVal::Start,
-            ParseNodeVal::End => NodeVal::End,
-            ParseNodeVal::Optional(node) => NodeVal::Optional(Rc::new(try_unwrap_parse_node(node)?.try_into()?)),
-            ParseNodeVal::Group { group, cfg } => NodeVal::Group {
-                group: Rc::new(try_unwrap_parse_node(group)?.try_into()?),
-                cfg,
-            },
-            ParseNodeVal::Set { set, inverted } => NodeVal::Set { set, inverted },
-            ParseNodeVal::Or { left, right } => NodeVal::Or {
-                left: Rc::new(try_unwrap_parse_node(left)?.try_into()?),
-                right: Rc::new(try_unwrap_parse_node(right)?.try_into()?),
-            },
-            ParseNodeVal::RepetitionRange { min, max, node } => NodeVal::RepetitionRange {
-                min,
-                max,
-                node: Rc::new(try_unwrap_parse_node(node)?.try_into()?),
-            },
-        };
-
-        Ok(Node {
-            val,
-            next: match parsed_node.next {
-                None => None,
-                Some(next) => Some(Rc::new(try_unwrap_parse_node(next)?.try_into()?)),
-            },
-        })
-    }
 }
 
 impl fmt::Debug for Node {
@@ -143,7 +70,7 @@ impl fmt::Debug for Node {
                     while let Some(ch) = iter.next() {
                         f.write_fmt(format_args!("'{}'", ch))?;
 
-                        if let Some(_) = iter.peek() {
+                        if iter.peek().is_some() {
                             f.write_str(", ")?;
                         }
                     }
@@ -189,69 +116,54 @@ impl fmt::Debug for Node {
     }
 }
 
-#[derive(Clone, Debug)]
-pub struct MutNode {
-    pub val: NodeVal,
-    pub next: Option<Rc<RefCell<MutNode>>>,
-}
+impl TryFrom<ParseNode> for Node {
+    type Error = super::ParseError;
 
-impl MutNode {
-    pub fn tail(head: Rc<RefCell<Self>>) -> Rc<RefCell<MutNode>> {
-        let mut curr = head;
-        loop {
-            match &curr.clone().borrow().next {
-                Some(next) => curr = next.clone(),
-                None => break,
-            };
+    fn try_from(parsed_node: ParseNode) -> Result<Self, Self::Error> {
+        fn try_unwrap_parse_node(parse_node: Rc<RefCell<ParseNode>>) -> Result<ParseNode, super::ParseError> {
+            Rc::try_unwrap(parse_node)
+                .map_err(|_| super::ParseError::ParseGraphCycle)
+                .map(|refcell| refcell.into_inner())
         }
 
-        curr
-    }
+        let val = match parsed_node.val {
+            ParseNodeVal::Poisoned => NodeVal::Poisoned,
+            ParseNodeVal::Word(word) => NodeVal::Word(word),
+            ParseNodeVal::Any => NodeVal::Any,
+            ParseNodeVal::ZeroOrMore { node, greedy } => NodeVal::ZeroOrMore {
+                node: Rc::new(try_unwrap_parse_node(node)?.try_into()?),
+                greedy,
+            },
+            ParseNodeVal::OneOrMore { node, greedy } => NodeVal::OneOrMore {
+                node: Rc::new(try_unwrap_parse_node(node)?.try_into()?),
+                greedy,
+            },
+            ParseNodeVal::Start => NodeVal::Start,
+            ParseNodeVal::End => NodeVal::End,
+            ParseNodeVal::Optional(node) => NodeVal::Optional(Rc::new(try_unwrap_parse_node(node)?.try_into()?)),
+            ParseNodeVal::Group { group, cfg } => NodeVal::Group {
+                group: Rc::new(try_unwrap_parse_node(group)?.try_into()?),
+                cfg,
+            },
+            ParseNodeVal::Set { set, inverted } => NodeVal::Set { set, inverted },
+            ParseNodeVal::Or { left, right } => NodeVal::Or {
+                left: Rc::new(try_unwrap_parse_node(left)?.try_into()?),
+                right: Rc::new(try_unwrap_parse_node(right)?.try_into()?),
+            },
+            ParseNodeVal::RepetitionRange { min, max, node } => NodeVal::RepetitionRange {
+                min,
+                max,
+                node: Rc::new(try_unwrap_parse_node(node)?.try_into()?),
+            },
+        };
 
-    pub fn append(self, node: MutNode) -> Self {
-        // We need to perform all operations on head_mut inside a separate scope so the bindings will be dropped before the Rc::try_unwrap.
-        let head_mut = Rc::new(RefCell::new(self));
-        {
-            let tail_mut = MutNode::tail(head_mut.clone());
-
-            // Add a GroupEnd to the end of the group and then add the rest of the node chain after that.
-            tail_mut.borrow_mut().next.replace(Rc::new(RefCell::new(node)));
-        }
-
-        Rc::try_unwrap(head_mut)
-            .expect("MutNode should not have created multiple Rc refs to inner nodes")
-            .into_inner()
-    }
-
-    pub fn append_option_node(self, next: &Option<Rc<Node>>) -> Self {
-        match next {
-            None => self,
-            Some(next) => self.append(next.as_ref().clone().into_mut()),
-        }
-    }
-
-    pub fn into_node(self) -> Node {
-        self.try_into()
-            .expect("MutNode should not have created multiple Rc refs to inner nodes")
-    }
-}
-
-impl From<Node> for MutNode {
-    fn from(node: Node) -> Self {
-        fn rec(maybe_node: &Option<Rc<Node>>) -> Option<Rc<RefCell<MutNode>>> {
-            match maybe_node {
+        Ok(Node {
+            val,
+            next: match parsed_node.next {
                 None => None,
-                Some(node) => Some(Rc::new(RefCell::new(MutNode {
-                    val: node.val.clone(),
-                    next: rec(&node.next),
-                }))),
-            }
-        }
-
-        MutNode {
-            val: node.val.clone(),
-            next: rec(&node.next),
-        }
+                Some(next) => Some(Rc::new(try_unwrap_parse_node(next)?.try_into()?)),
+            },
+        })
     }
 }
 

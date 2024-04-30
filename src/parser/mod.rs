@@ -72,6 +72,7 @@ impl<'str> fmt::Debug for ParseErrorWithContext<'str> {
     }
 }
 
+#[derive(Default)]
 pub struct Parser {}
 
 struct ParserImpl<Iter>
@@ -294,21 +295,18 @@ where
             }
         };
 
-        return true;
+        true
     }
 
-    fn parse(self: &mut Self, until: Option<char>) -> Result<Option<Rc<RefCell<ParseNode>>>, ParseError> {
+    fn parse(&mut self, until: Option<char>) -> Result<Option<Rc<RefCell<ParseNode>>>, ParseError> {
         let mut head = None;
         let mut prev: Option<Rc<RefCell<ParseNode>>> = None;
 
         while let Some(ch) = self.peek() {
-            match until {
-                Some(until) => {
-                    if *ch == until {
-                        break;
-                    }
+            if let Some(until) = until {
+                if *ch == until {
+                    break;
                 }
-                None => {}
             }
 
             let new_node_val = match ch {
@@ -471,10 +469,10 @@ where
 
     fn escape_next(&mut self) -> Result<char, ParseError> {
         match self.next() {
-            None => return Err(ParseError::MissingCharacterToEscape),
+            None => Err(ParseError::MissingCharacterToEscape),
             Some(ch) => match ch {
                 '(' | ')' | '{' | '}' | '[' | ']' | '|' | '\\' | '^' | '$' | '.' | '*' | '?' | '+' => Ok(ch),
-                _ => return Err(ParseError::UnexpectedCharErr(ch)),
+                _ => Err(ParseError::UnexpectedCharErr(ch)),
             },
         }
     }
@@ -485,7 +483,7 @@ impl Parser {
         Parser {}
     }
 
-    pub fn parse_str<'str>(self: &Self, input: &'str str) -> Result<ParseResult, ParseErrorWithContext<'str>> {
+    pub fn parse_str<'str>(&self, input: &'str str) -> Result<ParseResult, ParseErrorWithContext<'str>> {
         let mut parser = ParserImpl {
             iter: input.chars().peekable(),
             index: 0,
