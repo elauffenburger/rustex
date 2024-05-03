@@ -1,5 +1,5 @@
 use core::fmt;
-use std::{cell::RefCell, iter::Peekable, mem, rc::Rc};
+use std::{cell::RefCell, iter::Peekable, mem, sync::Arc};
 
 mod node;
 mod parse_node;
@@ -7,8 +7,8 @@ mod parse_node;
 pub use node::*;
 use parse_node::*;
 
-fn rcref<T>(val: T) -> Rc<RefCell<T>> {
-    Rc::new(RefCell::new(val))
+fn rcref<T>(val: T) -> Arc<RefCell<T>> {
+    Arc::new(RefCell::new(val))
 }
 
 #[derive(Debug, Clone)]
@@ -47,7 +47,7 @@ impl fmt::Debug for ParseError {
             }
             ParseError::MissingLeftSideOfModifier => f.write_str("missing left side of modifier"),
             ParseError::UnexpectedEmptyParseNodeOption => {
-                f.write_str("internal: unexpected unwrap of Option<Rc<RefCell<ParseNode>>>")
+                f.write_str("internal: unexpected unwrap of Option<Arc<RefCell<ParseNode>>>")
             }
             Self::ParseGraphCycle => write!(f, "found reference cycle in parse graph"),
             Self::UnexpectedEndOfInput => write!(f, "found unexpected end of input"),
@@ -197,8 +197,8 @@ where
         Self::SPECIAL_CHARS.contains(ch)
     }
 
-    fn decorate_node_option<F: FnOnce(Rc<RefCell<ParseNode>>) -> ParseNodeVal>(
-        node: &mut Option<Rc<RefCell<ParseNode>>>,
+    fn decorate_node_option<F: FnOnce(Arc<RefCell<ParseNode>>) -> ParseNodeVal>(
+        node: &mut Option<Arc<RefCell<ParseNode>>>,
         decorator: F,
     ) -> Result<(), ParseError> {
         if node.is_none() {
@@ -225,8 +225,8 @@ where
         Ok(())
     }
 
-    fn decorate_node_option_for_last_char_modifiers<F: FnOnce(Rc<RefCell<ParseNode>>) -> ParseNodeVal>(
-        node: &mut Option<Rc<RefCell<ParseNode>>>,
+    fn decorate_node_option_for_last_char_modifiers<F: FnOnce(Arc<RefCell<ParseNode>>) -> ParseNodeVal>(
+        node: &mut Option<Arc<RefCell<ParseNode>>>,
         decorator: F,
     ) -> Result<(), ParseError> {
         let take_last_ch = match node {
@@ -298,9 +298,9 @@ where
         true
     }
 
-    fn parse(&mut self, until: Option<char>) -> Result<Option<Rc<RefCell<ParseNode>>>, ParseError> {
+    fn parse(&mut self, until: Option<char>) -> Result<Option<Arc<RefCell<ParseNode>>>, ParseError> {
         let mut head = None;
-        let mut prev: Option<Rc<RefCell<ParseNode>>> = None;
+        let mut prev: Option<Arc<RefCell<ParseNode>>> = None;
 
         while let Some(ch) = self.peek() {
             if let Some(until) = until {
@@ -498,12 +498,12 @@ impl Parser {
                         Some(head) => head,
                     };
 
-                    let head = Rc::try_unwrap(head_ptr)
+                    let head = Arc::try_unwrap(head_ptr)
                         .map_err(|_| ParseError::ParseGraphCycle)?
                         .into_inner()
                         .try_into()?;
 
-                    Ok(Some(Rc::new(head)))
+                    Ok(Some(Arc::new(head)))
                 })
                 .map_err(|err| ParseErrorWithContext {
                     err,
@@ -516,7 +516,7 @@ impl Parser {
 
 #[derive(Default, Clone)]
 pub struct ParseResult {
-    pub head: Option<Rc<Node>>,
+    pub head: Option<Arc<Node>>,
 }
 
 impl fmt::Debug for ParseResult {

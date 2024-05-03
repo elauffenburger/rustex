@@ -1,4 +1,4 @@
-use std::{cell::RefCell, rc::Rc};
+use std::{cell::RefCell, rc::Rc, sync::Arc};
 
 use crate::parser::{Node, NodeVal};
 
@@ -7,14 +7,14 @@ pub trait AppendNode: Sized {
     fn with_tail_option(&self, tail: Option<Self>) -> Self;
 }
 
-impl AppendNode for Rc<Node> {
+impl AppendNode for Arc<Node> {
     fn with_tail_option(&self, tail: Option<Self>) -> Self {
         self.as_ref()
             .clone()
             .into_mut()
             .append_option_node(&tail)
             .into_node()
-            .rc()
+            .arc()
     }
 
     fn with_tail(&self, tail: Self) -> Self {
@@ -49,7 +49,7 @@ impl MutNode {
     }
 
     pub fn append(self, node: MutNode) -> Self {
-        // We need to perform all operations on head_mut inside a separate scope so the bindings will be dropped before the Rc::try_unwrap.
+        // We need to perform all operations on head_mut inside a separate scope so the bindings will be dropped before the Arc::try_unwrap.
         let head_mut = Rc::new(RefCell::new(self));
         {
             let tail_mut = MutNode::tail(head_mut.clone());
@@ -59,11 +59,11 @@ impl MutNode {
         }
 
         Rc::try_unwrap(head_mut)
-            .expect("MutNode should not have created multiple Rc refs to inner nodes")
+            .expect("MutNode should not have created multiple Arc refs to inner nodes")
             .into_inner()
     }
 
-    pub fn append_option_node(self, next: &Option<Rc<Node>>) -> Self {
+    pub fn append_option_node(self, next: &Option<Arc<Node>>) -> Self {
         match next {
             None => self,
             Some(next) => self.append(next.as_ref().clone().into_mut()),
@@ -72,19 +72,18 @@ impl MutNode {
 
     pub fn into_node(self) -> Node {
         self.try_into()
-            .expect("MutNode should not have created multiple Rc refs to inner nodes")
+            .expect("MutNode should not have created multiple Arc refs to inner nodes")
     }
 }
 
 impl From<Node> for MutNode {
     fn from(node: Node) -> Self {
-        fn rec(maybe_node: &Option<Rc<Node>>) -> Option<Rc<RefCell<MutNode>>> {
+        fn rec(maybe_node: &Option<Arc<Node>>) -> Option<Rc<RefCell<MutNode>>> {
             maybe_node.as_ref().map(|node| {
-                MutNode {
+                Rc::new(RefCell::new(MutNode {
                     val: node.val.clone(),
                     next: rec(&node.next),
-                }
-                .rcrefcell()
+                }))
             })
         }
 
@@ -107,19 +106,15 @@ impl TryFrom<MutNode> for Node {
             val: node.val.clone(),
             next: match node.next {
                 None => None,
-                Some(node) => Some(Rc::new(try_unwrap_mut_node(node)?.try_into()?)),
+                Some(node) => Some(Arc::new(try_unwrap_mut_node(node)?.try_into()?)),
             },
         })
     }
 }
 
 pub trait IntoSmartPointer: Sized {
-    fn rc(self) -> Rc<Self> {
-        Rc::new(self)
-    }
-
-    fn rcrefcell(self) -> Rc<RefCell<Self>> {
-        Rc::new(RefCell::new(self))
+    fn arc(self) -> Arc<Self> {
+        Arc::new(self)
     }
 }
 

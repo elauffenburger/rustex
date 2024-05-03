@@ -4,9 +4,9 @@ use rustex::{executor, parser::ParseResult};
 
 use crate::{error::Error, printer, replace::ReplaceSpec, FileInput};
 
-pub(crate) struct RunArgs<'a> {
-    pub files: &'a mut [FileInput],
-    pub expressions: &'a [ParseResult],
+pub(crate) struct RunArgs {
+    pub files: Vec<FileInput>,
+    pub expressions: Vec<ParseResult>,
     pub replace_spec: Option<ReplaceSpec>,
 }
 
@@ -15,12 +15,12 @@ pub(crate) struct Matcher<W: io::Write> {
 }
 
 impl<W: io::Write> Matcher<W> {
-    pub(crate) fn run(&mut self, args: RunArgs) -> Result<(), Error> {
-        let num_files = (&args.files).len();
+    pub(crate) async fn run(&mut self, args: RunArgs) -> Result<(), Error> {
+        let num_files = args.files.len();
         let searching_multiple_files = num_files > 1;
         let should_print_file_info = searching_multiple_files;
 
-        for (file_num, file_spec) in args.files.iter_mut().enumerate() {
+        for (file_num, file_spec) in args.files.iter().enumerate() {
             let (file_handle, file_name, is_stdin): (Box<dyn io::Read>, String, bool) = match file_spec {
                 FileInput::File(filename, file_handle) => (Box::new(file_handle), filename.to_string(), false),
                 FileInput::Stdin(stdin) => (Box::new(stdin), "stdin".into(), true),
@@ -43,8 +43,8 @@ impl<W: io::Write> Matcher<W> {
                 line_num += 1;
                 let line_bytes = line.bytes().collect::<Vec<_>>();
 
-                for expr in args.expressions {
-                    let exec_res = executor.exec(expr, &line)?;
+                for expr in &args.expressions {
+                    let exec_res = executor.exec(expr, &line).await?;
                     if exec_res.is_none() {
                         continue;
                     }

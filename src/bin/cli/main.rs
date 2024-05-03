@@ -39,13 +39,14 @@ struct Args {
     replace: Option<String>,
 }
 
-pub fn main() -> Result<(), u32> {
-    tracing_subscriber::fmt::init();
+#[tokio::main]
+pub async fn main() -> Result<(), u32> {
+    tracing_subscriber::fmt().init();
 
-    Ok(maine()?)
+    Ok(maine().await?)
 }
 
-fn maine() -> Result<(), Error> {
+async fn maine() -> Result<(), Error> {
     let args = Args::parse();
 
     let (filenames, read_stdin) = {
@@ -87,7 +88,7 @@ fn maine() -> Result<(), Error> {
             .collect::<Result<Vec<_>, _>>()?
     };
 
-    let mut files = {
+    let files = {
         let mut files: Vec<FileInput> = vec![];
 
         // Add literal files.
@@ -112,11 +113,13 @@ fn maine() -> Result<(), Error> {
         ))),
     };
 
-    matcher.run(matcher::RunArgs {
-        files: &mut files,
-        expressions: &expressions,
-        replace_spec: args.replace.map(|str| replace::ReplaceSpec::from(str.as_str())),
-    })
+    matcher
+        .run(matcher::RunArgs {
+            files,
+            expressions,
+            replace_spec: args.replace.map(|str| replace::ReplaceSpec::from(str.as_str())),
+        })
+        .await
 }
 
 enum FileInput {

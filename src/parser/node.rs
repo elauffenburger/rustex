@@ -1,4 +1,4 @@
-use std::{cell::RefCell, fmt, rc::Rc};
+use std::{cell::RefCell, fmt, sync::Arc};
 
 use indexmap::IndexSet;
 
@@ -9,7 +9,7 @@ use super::ParseNode;
 #[derive(Clone)]
 pub struct Node {
     pub val: NodeVal,
-    pub next: Option<Rc<Node>>,
+    pub next: Option<Arc<Node>>,
 }
 
 impl fmt::Debug for Node {
@@ -120,8 +120,8 @@ impl TryFrom<ParseNode> for Node {
     type Error = super::ParseError;
 
     fn try_from(parsed_node: ParseNode) -> Result<Self, Self::Error> {
-        fn try_unwrap_parse_node(parse_node: Rc<RefCell<ParseNode>>) -> Result<ParseNode, super::ParseError> {
-            Rc::try_unwrap(parse_node)
+        fn try_unwrap_parse_node(parse_node: Arc<RefCell<ParseNode>>) -> Result<ParseNode, super::ParseError> {
+            Arc::try_unwrap(parse_node)
                 .map_err(|_| super::ParseError::ParseGraphCycle)
                 .map(|refcell| refcell.into_inner())
         }
@@ -131,29 +131,29 @@ impl TryFrom<ParseNode> for Node {
             ParseNodeVal::Word(word) => NodeVal::Word(word),
             ParseNodeVal::Any => NodeVal::Any,
             ParseNodeVal::ZeroOrMore { node, greedy } => NodeVal::ZeroOrMore {
-                node: Rc::new(try_unwrap_parse_node(node)?.try_into()?),
+                node: Arc::new(try_unwrap_parse_node(node)?.try_into()?),
                 greedy,
             },
             ParseNodeVal::OneOrMore { node, greedy } => NodeVal::OneOrMore {
-                node: Rc::new(try_unwrap_parse_node(node)?.try_into()?),
+                node: Arc::new(try_unwrap_parse_node(node)?.try_into()?),
                 greedy,
             },
             ParseNodeVal::Start => NodeVal::Start,
             ParseNodeVal::End => NodeVal::End,
-            ParseNodeVal::Optional(node) => NodeVal::Optional(Rc::new(try_unwrap_parse_node(node)?.try_into()?)),
+            ParseNodeVal::Optional(node) => NodeVal::Optional(Arc::new(try_unwrap_parse_node(node)?.try_into()?)),
             ParseNodeVal::Group { group, cfg } => NodeVal::Group {
-                group: Rc::new(try_unwrap_parse_node(group)?.try_into()?),
+                group: Arc::new(try_unwrap_parse_node(group)?.try_into()?),
                 cfg,
             },
             ParseNodeVal::Set { set, inverted } => NodeVal::Set { set, inverted },
             ParseNodeVal::Or { left, right } => NodeVal::Or {
-                left: Rc::new(try_unwrap_parse_node(left)?.try_into()?),
-                right: Rc::new(try_unwrap_parse_node(right)?.try_into()?),
+                left: Arc::new(try_unwrap_parse_node(left)?.try_into()?),
+                right: Arc::new(try_unwrap_parse_node(right)?.try_into()?),
             },
             ParseNodeVal::RepetitionRange { min, max, node } => NodeVal::RepetitionRange {
                 min,
                 max,
-                node: Rc::new(try_unwrap_parse_node(node)?.try_into()?),
+                node: Arc::new(try_unwrap_parse_node(node)?.try_into()?),
             },
         };
 
@@ -161,7 +161,7 @@ impl TryFrom<ParseNode> for Node {
             val,
             next: match parsed_node.next {
                 None => None,
-                Some(next) => Some(Rc::new(try_unwrap_parse_node(next)?.try_into()?)),
+                Some(next) => Some(Arc::new(try_unwrap_parse_node(next)?.try_into()?)),
             },
         })
     }
@@ -175,18 +175,18 @@ pub enum NodeVal {
     Word(String),
     Any,
     ZeroOrMore {
-        node: Rc<Node>,
+        node: Arc<Node>,
         greedy: bool,
     },
     OneOrMore {
-        node: Rc<Node>,
+        node: Arc<Node>,
         greedy: bool,
     },
     Start,
     End,
-    Optional(Rc<Node>),
+    Optional(Arc<Node>),
     Group {
-        group: Rc<Node>,
+        group: Arc<Node>,
         cfg: Option<super::GroupConfig>,
     },
     GroupEnd {
@@ -198,12 +198,12 @@ pub enum NodeVal {
         inverted: bool,
     },
     Or {
-        left: Rc<Node>,
-        right: Rc<Node>,
+        left: Arc<Node>,
+        right: Arc<Node>,
     },
     RepetitionRange {
         min: u32,
         max: Option<u32>,
-        node: Rc<Node>,
+        node: Arc<Node>,
     },
 }

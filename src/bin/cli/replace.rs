@@ -51,7 +51,7 @@ impl ReplaceSpec {
 
         let replaced = self.parts.iter().fold(String::new(), |mut acc, part| {
             match part {
-                ReplaceSpecNodeValue::String(str) => acc.push_str(&str),
+                ReplaceSpecNodeValue::String(str) => acc.push_str(str),
                 ReplaceSpecNodeValue::GroupNum(group_name) => match res.groups.get(group_name) {
                     None => acc.push_str(&format!("${}", group_name)),
                     Some(val) => acc.push_str(&input[val.0..=val.1]),

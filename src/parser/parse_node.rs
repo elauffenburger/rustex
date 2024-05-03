@@ -1,10 +1,10 @@
-use std::{cell::RefCell, rc::Rc};
+use std::{cell::RefCell, sync::Arc};
 
 use indexmap::IndexSet;
 
 pub struct ParseNode {
     pub val: ParseNodeVal,
-    pub next: Option<Rc<RefCell<ParseNode>>>,
+    pub next: Option<Arc<RefCell<ParseNode>>>,
 }
 
 #[derive(Clone)]
@@ -15,18 +15,18 @@ pub enum ParseNodeVal {
     Word(String),
     Any,
     ZeroOrMore {
-        node: Rc<RefCell<ParseNode>>,
+        node: Arc<RefCell<ParseNode>>,
         greedy: bool,
     },
     OneOrMore {
-        node: Rc<RefCell<ParseNode>>,
+        node: Arc<RefCell<ParseNode>>,
         greedy: bool,
     },
     Start,
     End,
-    Optional(Rc<RefCell<ParseNode>>),
+    Optional(Arc<RefCell<ParseNode>>),
     Group {
-        group: Rc<RefCell<ParseNode>>,
+        group: Arc<RefCell<ParseNode>>,
         cfg: Option<super::GroupConfig>,
     },
     Set {
@@ -34,12 +34,12 @@ pub enum ParseNodeVal {
         inverted: bool,
     },
     Or {
-        left: Rc<RefCell<ParseNode>>,
-        right: Rc<RefCell<ParseNode>>,
+        left: Arc<RefCell<ParseNode>>,
+        right: Arc<RefCell<ParseNode>>,
     },
     RepetitionRange {
         min: u32,
         max: Option<u32>,
-        node: Rc<RefCell<ParseNode>>,
+        node: Arc<RefCell<ParseNode>>,
     },
 }

@@ -1,8 +1,9 @@
 use core::fmt;
-use std::{collections::VecDeque, rc::Rc};
+use std::{collections::VecDeque, ops::DerefMut, sync::Arc};
 
-use log::debug;
-use tracing::instrument;
+use async_recursion::async_recursion;
+use tokio::sync::Mutex;
+use tracing::{debug, instrument};
 
 use crate::parser::{self, Node, NodeVal};
 
@@ -77,59 +78,96 @@ impl Executor {
     }
 
     #[instrument(skip(self))]
-    pub fn exec(&mut self, parsed: &parser::ParseResult, input: &str) -> Result<Option<ExecResult>, ExecError> {
-        let mut executor = ExecutorImpl {
-            input,
+    pub async fn exec(&mut self, parsed: &parser::ParseResult, input: &str) -> Result<Option<ExecResult>, ExecError> {
+        let executor = Arc::new(ExecutorImpl {
+            input: Arc::new(input.into()),
             n: input.len(),
-            frontier: VecDeque::new(),
-        };
-
-        executor.frontier.push_front(ExecutorState {
-            res: None,
-            node: parsed.head.clone(),
-            cur: 0,
+            frontier: Arc::new(Mutex::new(VecDeque::new())),
         });
 
-        let mut best_match = None;
-        while let Some(state) = executor.frontier.pop_front() {
-            debug!("popped new state: {:?}", &state);
-
-            if let Some(res) = executor.exec(state.res, state.node.as_ref(), state.cur)? {
-                match &best_match {
-                    None => best_match = Some(res),
-                    Some(curr_best) => {
-                        if res.end > curr_best.end {
-                            best_match = Some(res)
-                        }
-                    }
-                }
-            }
+        {
+            executor.frontier.lock().await.push_front(ExecutorState {
+                res: None,
+                node: parsed.head.clone(),
+                cur: 0,
+            });
         }
 
-        Ok(best_match)
+        let processing_task: tokio::task::JoinHandle<Option<ExecResult>> = tokio::spawn(async move {
+            let best_match: Arc<Mutex<Option<ExecResult>>> = Arc::new(Mutex::new(None));
+            loop {
+                let executor = executor.clone();
+
+                let frontier_clone = {
+                    let mut frontier_lock = executor.frontier.lock().await;
+                    let n = 0..frontier_lock.len();
+                    frontier_lock.drain(n).collect::<Vec<_>>()
+                };
+
+                let tasks = frontier_clone
+                    .into_iter()
+                    .map(|state| {
+                        let state = state.clone();
+                        let executor = executor.clone();
+                        let best_match = best_match.clone();
+
+                        tokio::spawn(async move {
+                            debug!(state = format!("{:?}", &state), "popped new state");
+
+                            if let Some(res) = executor.exec(state.res, state.node.clone(), state.cur).await? {
+                                let mut best_match = best_match.lock().await;
+                                match best_match.deref_mut() {
+                                    None => {
+                                        best_match.replace(res);
+                                    }
+                                    Some(curr_best) => {
+                                        if res.end > curr_best.end {
+                                            best_match.replace(res);
+                                        }
+                                    }
+                                }
+                            }
+
+                            Ok::<Option<ExecResult>, ExecError>(None)
+                        })
+                    })
+                    .collect::<Vec<_>>();
+
+                if tasks.is_empty() {
+                    break;
+                }
+
+                futures::future::join_all(tasks).await;
+            }
+
+            Arc::try_unwrap(best_match).unwrap().into_inner()
+        });
+
+        Ok(processing_task.await.unwrap())
     }
 }
 
 #[derive(Debug, Clone)]
 struct ExecutorState {
     res: Option<ExecResult>,
-    node: Option<Rc<Node>>,
+    node: Option<Arc<Node>>,
     cur: usize,
 }
 
-struct ExecutorImpl<'input> {
-    input: &'input str,
+struct ExecutorImpl {
+    input: Arc<String>,
     n: usize,
 
-    frontier: VecDeque<ExecutorState>,
+    frontier: Arc<Mutex<VecDeque<ExecutorState>>>,
 }
 
-impl<'input> ExecutorImpl<'input> {
+impl ExecutorImpl {
     #[instrument(skip(self, res))]
-    fn exec(
-        &mut self,
+    #[async_recursion]
+    async fn exec(
+        &self,
         res: Option<ExecResult>,
-        node: Option<&Rc<Node>>,
+        node: Option<Arc<Node>>,
         cur: usize,
     ) -> Result<Option<ExecResult>, ExecError> {
         let node = match node {
@@ -151,18 +189,22 @@ impl<'input> ExecutorImpl<'input> {
                     return Ok(None);
                 }
 
-                self.exec(res.or(Some(ExecResult::new(cur))), node.next.as_ref(), cur + 1)
+                self.exec(res.or(Some(ExecResult::new(cur))), node.next.clone(), cur + 1)
+                    .await
             }
             NodeVal::Start => {
                 if cur == 0 {
-                    self.exec(res.or(Some(ExecResult::new(cur))), node.next.as_ref(), cur)
+                    self.exec(res.or(Some(ExecResult::new(cur))), node.next.clone(), cur)
+                        .await
                 } else {
                     Ok(None)
                 }
             }
             NodeVal::End => {
                 if cur == self.n {
-                    return self.exec(res.or(Some(ExecResult::new(cur))), node.next.as_ref(), cur);
+                    return self
+                        .exec(res.or(Some(ExecResult::new(cur))), node.next.clone(), cur)
+                        .await;
                 }
 
                 Ok(None)
@@ -179,7 +221,8 @@ impl<'input> ExecutorImpl<'input> {
                     }
                     Some((start, end)) => {
                         debug!("matched!");
-                        self.exec(res.or(Some(ExecResult::new(start))), node.next.as_ref(), end + 1)
+                        self.exec(res.or(Some(ExecResult::new(start))), node.next.clone(), end + 1)
+                            .await
                     }
                 }
             }
@@ -187,21 +230,24 @@ impl<'input> ExecutorImpl<'input> {
                 // Branch the expression into two versions: one that has this node and one that doesn't and add both to the frontier.
 
                 // Branch the "skip this node" case.
-                self.frontier.push_front(ExecutorState {
+                self.frontier.lock().await.push_front(ExecutorState {
                     res: res.clone(),
                     node: node.next.clone(),
                     cur,
                 });
-                debug!("state: {:?}", self.frontier.front());
+                debug!("state: {:?}", self.frontier.lock().await.front());
 
                 // Branch the "take this node" case.
-                self.exec(res, Some(&to_test.with_tail_option(node.next.clone())), cur)
+                self.exec(res, Some(to_test.with_tail_option(node.next.clone())), cur)
+                    .await
             }
             NodeVal::ZeroOrMore { node: to_test, greedy } => {
                 self.match_zero_or_more(res, node.clone(), cur, to_test.clone(), *greedy)
+                    .await
             }
             NodeVal::OneOrMore { node: to_test, greedy } => {
                 self.match_one_or_more(res, node.clone(), cur, to_test.clone(), *greedy)
+                    .await
             }
             NodeVal::RepetitionRange {
                 node: to_test,
@@ -217,7 +263,7 @@ impl<'input> ExecutorImpl<'input> {
                         break;
                     }
 
-                    let new_res = self.exec(res.clone(), Some(to_test), cur)?;
+                    let new_res = self.exec(res.clone(), Some(to_test.clone()), cur).await?;
                     res = ExecResult::map_options(res, new_res.clone());
                     match new_res {
                         None => return Ok(None),
@@ -231,13 +277,13 @@ impl<'input> ExecutorImpl<'input> {
                     Some(max) => {
                         // If min == max, we're done; move on!
                         if *min == *max {
-                            return self.exec(res, node.next.as_ref(), cur);
+                            return self.exec(res, node.next.clone(), cur).await;
                         }
 
                         // Branch two states: one where we don't match again, and one where we match {1, max-min}
 
                         // Push the "match again {1,max-min}" state.
-                        self.frontier.push_front(ExecutorState {
+                        self.frontier.lock().await.push_front(ExecutorState {
                             res: res.clone(),
                             node: Some(
                                 Node {
@@ -248,17 +294,18 @@ impl<'input> ExecutorImpl<'input> {
                                     },
                                     next: node.next.clone(),
                                 }
-                                .rc(),
+                                .arc(),
                             ),
                             cur,
                         });
 
                         // Try the "don't match" state.
-                        self.exec(res, node.next.clone().as_ref(), cur)
+                        self.exec(res, node.next.clone(), cur).await
                     }
                     None => {
                         // We don't have an upper limit; try matching zero-or-more times.
                         self.match_zero_or_more(res, node.clone(), cur, to_test.clone(), false)
+                            .await
                     }
                 }
             }
@@ -273,10 +320,10 @@ impl<'input> ExecutorImpl<'input> {
                         },
                         next: node.next.clone(),
                     }
-                    .rc(),
+                    .arc(),
                 );
 
-                self.exec(res, Some(&new_head), cur)
+                self.exec(res, Some(new_head), cur).await
             }
             NodeVal::GroupEnd { start, cfg } => {
                 // Record this group if needed.
@@ -290,7 +337,7 @@ impl<'input> ExecutorImpl<'input> {
                     }
                 }
 
-                self.exec(res, node.next.as_ref(), cur)
+                self.exec(res, node.next.clone(), cur).await
             }
             NodeVal::Set { set, inverted } => {
                 let ch = match self.input.chars().nth(cur) {
@@ -301,7 +348,8 @@ impl<'input> ExecutorImpl<'input> {
                 match (inverted, set.contains(&ch)) {
                     // not inverted, did find:
                     (false, true) | (true, false) => {
-                        self.exec(res.or(Some(ExecResult::new(cur))), node.next.as_ref(), cur + 1)
+                        self.exec(res.or(Some(ExecResult::new(cur))), node.next.clone(), cur + 1)
+                            .await
                     }
                     _ => Ok(None),
                 }
@@ -311,14 +359,15 @@ impl<'input> ExecutorImpl<'input> {
                 // NOTE: this might require more plumbing because we might want to allow either as a valid match; not sure what the actual spec is here.
 
                 // Push the right state.
-                self.frontier.push_front(ExecutorState {
+                self.frontier.lock().await.push_front(ExecutorState {
                     res: res.clone(),
                     node: Some(right.with_tail_option(node.next.clone())),
                     cur,
                 });
 
                 // Try the left state.
-                self.exec(res, Some(&left.with_tail_option(node.next.clone())), cur)
+                self.exec(res, Some(left.with_tail_option(node.next.clone())), cur)
+                    .await
             }
         }
     }
@@ -346,34 +395,35 @@ impl<'input> ExecutorImpl<'input> {
         }
     }
 
-    fn match_zero_or_more(
-        &mut self,
+    #[async_recursion]
+    async fn match_zero_or_more(
+        &self,
         res: Option<ExecResult>,
-        node: Rc<Node>,
+        node: Arc<Node>,
         cur: usize,
-        to_test: Rc<Node>,
+        to_test: Arc<Node>,
         greedy: bool,
     ) -> Result<Option<ExecResult>, ExecError> {
         // Branch the expression into two versions: one that matches one ore more times and one that doesn't contain the node and add both to the frontier.
 
         // Branch the "skip this node" case.
-        self.frontier.push_front(ExecutorState {
+        self.frontier.lock().await.push_front(ExecutorState {
             res: res.clone(),
             node: node.next.clone(),
             cur,
         });
-        debug!("state: {:?}", self.frontier.front());
+        debug!("state: {:?}", self.frontier.lock().await.front());
 
         // Branch the "one-or-more" case.
-        self.match_one_or_more(res, node, cur, to_test, greedy)
+        self.match_one_or_more(res, node, cur, to_test, greedy).await
     }
 
-    fn match_one_or_more(
-        &mut self,
+    async fn match_one_or_more(
+        &self,
         res: Option<ExecResult>,
-        node: Rc<Node>,
+        node: Arc<Node>,
         cur: usize,
-        to_test: Rc<Node>,
+        to_test: Arc<Node>,
         greedy: bool,
     ) -> Result<Option<ExecResult>, ExecError> {
         let mut res = res;
@@ -382,7 +432,7 @@ impl<'input> ExecutorImpl<'input> {
         debug!("looking for 1 or more matches; cur: {:?}", cur);
 
         // Match at least once.
-        let new_res = self.exec(res.clone(), Some(&to_test), cur)?;
+        let new_res = self.exec(res.clone(), Some(to_test.clone()), cur).await?;
         res = ExecResult::map_options(res, new_res.clone());
         match new_res {
             None => {
@@ -399,7 +449,7 @@ impl<'input> ExecutorImpl<'input> {
         // If lazy and we can match the next node, we're done!
         if !greedy {
             debug!("lazy matching...");
-            let res = self.exec(res.clone(), node.next.clone().as_ref(), cur)?;
+            let res = self.exec(res.clone(), node.next.clone(), cur).await?;
             if res.is_some() {
                 debug!("lazy matched!");
                 return Ok(res);
@@ -407,6 +457,6 @@ impl<'input> ExecutorImpl<'input> {
         }
 
         // We've branched our minimum number, so now we need to either keep matching or give up; we can model that with a "zero-or-more" match!
-        self.match_zero_or_more(res, node.clone(), cur, to_test.clone(), greedy)
+        self.match_zero_or_more(res, node.clone(), cur, to_test, greedy).await
     }
 }
