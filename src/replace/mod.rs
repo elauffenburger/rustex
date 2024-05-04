@@ -1,16 +1,22 @@
-use rustex::executor::ExecResult;
+use crate::executor;
 
-pub(crate) struct ReplaceSpec {
+pub struct ReplaceSpec {
     parts: Vec<ReplaceSpecNodeValue>,
 }
 
-enum ReplaceSpecNodeValue {
+pub enum ReplaceSpecNodeValue {
     String(String),
     GroupNum(String),
 }
 
 impl<'a> From<&'a str> for ReplaceSpec {
     fn from(str: &'a str) -> Self {
+        ReplaceSpec::parse_str(str)
+    }
+}
+
+impl ReplaceSpec {
+    pub fn parse_str(str: &str) -> Self {
         let mut spec = ReplaceSpec { parts: vec![] };
         let mut chars = str.chars();
 
@@ -41,10 +47,8 @@ impl<'a> From<&'a str> for ReplaceSpec {
 
         spec
     }
-}
 
-impl ReplaceSpec {
-    pub fn perform_replace(&self, input: &str, res: &ExecResult) -> Option<String> {
+    pub fn perform_replace(&self, input: &str, res: &executor::ExecResult) -> Option<String> {
         if self.parts.is_empty() {
             return None;
         }

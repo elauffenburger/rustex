@@ -3,10 +3,7 @@ use termcolor::{self};
 
 use std::{fs, io};
 
-use rustex::{
-    executor::{self},
-    parser,
-};
+use rustex::{executor, parser, replace};
 
 mod error;
 use error::Error;
@@ -16,8 +13,6 @@ use printer::OutputPrinter;
 
 mod matcher;
 use matcher::Matcher;
-
-mod replace;
 
 #[derive(clap::Parser, Debug)]
 #[command(author, version, about, long_about = None)]
