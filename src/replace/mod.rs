@@ -22,7 +22,7 @@ impl<'a> From<&'a str> for ReplaceSpec {
 impl ReplaceSpec {
     pub fn parse_str(str: &str) -> Self {
         let mut spec = ReplaceSpec { parts: vec![] };
-        let mut chars = str.chars();
+        let mut chars = str.chars().peekable();
 
         let mut curr_word = None;
         while let Some(ch) = chars.next() {
@@ -41,7 +41,20 @@ impl ReplaceSpec {
                 spec.parts.push(ReplaceSpecNodeValue::String(word));
             }
 
-            let group_num = (&mut chars).take_while(|ch| *ch != ' ').collect();
+            let group_num = {
+                let mut group_num = String::new();
+                while let Some(next) = chars.peek() {
+                    match *next {
+                        '1'..='9' => {
+                            group_num.push(*next);
+                            chars.next();
+                        }
+                        _ => break,
+                    }
+                }
+
+                group_num
+            };
             spec.parts.push(ReplaceSpecNodeValue::GroupNum(group_num));
         }
 

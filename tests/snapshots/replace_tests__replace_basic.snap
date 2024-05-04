@@ -1,0 +1,5 @@
+---
+source: tests/replace_tests.rs
+expression: result
+---
+"hello rust!"
