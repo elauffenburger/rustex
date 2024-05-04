@@ -1,6 +1,19 @@
+use std::sync;
+
 use rustex::{executor::Executor, parser::Parser, replace::ReplaceSpec};
+use tracing_subscriber::EnvFilter;
+
+const TEST_INIT: sync::Once = sync::Once::new();
+
+fn init_tests() {
+    TEST_INIT.call_once(|| {
+        tracing_subscriber::fmt().with_env_filter(EnvFilter::from_default_env()).with_test_writer().init();
+    });
+}
 
 async fn run_test(pattern: &str, input: &str, replace_pattern: &str) -> Result<String, Box<String>> {
+    init_tests();
+
     let parse_res = Parser::new()
         .parse_str(pattern)
         .map_err(|err| format!("failed to parse: {:?}", err))?;
@@ -13,7 +26,7 @@ async fn run_test(pattern: &str, input: &str, replace_pattern: &str) -> Result<S
 
     let spec = ReplaceSpec::parse_str(replace_pattern);
 
-    spec.perform_replace(replace_pattern, &exec_res)
+    spec.perform_replace(input, &exec_res)
         .ok_or_else(|| Box::new(format!("failed to perform replace or empty replace pattern")))
 }
 

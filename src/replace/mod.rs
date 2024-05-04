@@ -1,9 +1,13 @@
+use tracing::debug;
+
 use crate::executor;
 
+#[derive(Debug)]
 pub struct ReplaceSpec {
     parts: Vec<ReplaceSpecNodeValue>,
 }
 
+#[derive(Debug)]
 pub enum ReplaceSpecNodeValue {
     String(String),
     GroupNum(String),
@@ -48,7 +52,10 @@ impl ReplaceSpec {
         spec
     }
 
+    #[tracing::instrument]
     pub fn perform_replace(&self, input: &str, res: &executor::ExecResult) -> Option<String> {
+        debug!("performing replace");
+
         if self.parts.is_empty() {
             return None;
         }

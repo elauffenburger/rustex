@@ -1,6 +1,0 @@
----
-source: tests/replace_tests.rs
-assertion_line: 26
-expression: result
----
-"$1llo$2ust!"
