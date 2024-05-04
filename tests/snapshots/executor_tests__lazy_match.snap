@@ -5,7 +5,20 @@ expression: result
 ExecResult {
     start: 0,
     end: 6,
-    groups: {},
+    groups: {
+        "1": (
+            0,
+            0,
+        ),
+        "2": (
+            2,
+            4,
+        ),
+        "3": (
+            6,
+            6,
+        ),
+    },
 }
 p: '(.*?) (.*?) (.+?)'
 i: 'f bar baz qux'

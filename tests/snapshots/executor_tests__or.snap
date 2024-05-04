@@ -5,7 +5,24 @@ expression: result
 ExecResult {
     start: 0,
     end: 9,
-    groups: {},
+    groups: {
+        "1": (
+            2,
+            2,
+        ),
+        "2": (
+            4,
+            4,
+        ),
+        "3": (
+            5,
+            5,
+        ),
+        "5": (
+            7,
+            9,
+        ),
+    },
 }
 p: 'a (b|c) (c|d)(d|(foo)) (foo|end)'
 i: 'a b cd end'

@@ -5,7 +5,12 @@ expression: result
 ExecResult {
     start: 0,
     end: 9,
-    groups: {},
+    groups: {
+        "1": (
+            5,
+            4,
+        ),
+    },
 }
 p: 'hello(w?)world'
 i: 'helloworld'

@@ -5,7 +5,16 @@ expression: result
 ExecResult {
     start: 0,
     end: 10,
-    groups: {},
+    groups: {
+        "1": (
+            1,
+            3,
+        ),
+        "2": (
+            7,
+            8,
+        ),
+    },
 }
 p: 'h(ell)o w(or)ld'
 i: 'hello world foo bar baz'

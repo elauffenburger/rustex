@@ -81,6 +81,8 @@ where
 {
     iter: Peekable<Iter>,
     index: usize,
+
+    group_num: usize,
 }
 
 impl<Iter> ParserImpl<Iter>
@@ -112,7 +114,14 @@ where
                     _ => return Err(ParseError::BadGroupConfig),
                 }
             }
-            _ => None,
+
+            // By default, just name the group its numeric position.
+            _ => {
+                let res = Some(GroupConfig::Named(format!("{}", self.group_num)));
+                self.group_num += 1;
+
+                res
+            }
         };
 
         let group = match self.parse(Some(')'))? {
@@ -487,6 +496,7 @@ impl Parser {
         let mut parser = ParserImpl {
             iter: input.chars().peekable(),
             index: 0,
+            group_num: 1,
         };
 
         Ok(ParseResult {
